@@ -85,7 +85,7 @@ export default function EmployeeMeetings() {
         source: "employee",
         status: "draft",
         is_checked: false,
-        assigned_week_start: week.nextWeek.weekStartStr,
+        assigned_week_start: week.weekStartStr,
       })
       .select("*")
       .single();

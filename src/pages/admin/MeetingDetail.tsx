@@ -43,7 +43,7 @@ export default function MeetingDetail() {
 
   const [newTaskEmployee, setNewTaskEmployee] = useState("");
   const [newTaskText, setNewTaskText] = useState("");
-  const [nextWeekStart, setNextWeekStart] = useState(week.nextWeek.weekStartStr);
+  const [nextWeekStart, setNextWeekStart] = useState(week.weekStartStr);
 
   const fetchData = useCallback(async () => {
     if (!id) return;
