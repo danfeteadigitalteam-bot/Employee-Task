@@ -44,7 +44,7 @@ export default function EmployeeMeetings() {
     setSelectedMeeting(meeting);
 
     // Fetch my tasks for this meeting
-    const { data: myTasksData } = await supabase
+    const { data: myTasksData, error: myTasksError } = await supabase
       .from("meeting_tasks")
       .select("*")
       .eq("meeting_id", meeting.id)
@@ -52,7 +52,12 @@ export default function EmployeeMeetings() {
       .eq("source", "employee")
       .order("created_at");
 
-    if (myTasksData) {
+    if (myTasksError) {
+      console.error("Fetch tasks error:", myTasksError);
+      toast.error("Failed to load tasks: " + myTasksError.message);
+      setMyTasks([]);
+      setHasSubmitted(false);
+    } else if (myTasksData) {
       setMyTasks(myTasksData as MeetingTask[]);
       setHasSubmitted(myTasksData.some((t) => t.status === "submitted"));
     } else {
@@ -90,7 +95,13 @@ export default function EmployeeMeetings() {
       .select("*")
       .single();
 
-    if (data && !error) {
+    if (error) {
+      console.error("Add task error:", error);
+      toast.error("Failed to add task: " + error.message);
+      return;
+    }
+
+    if (data) {
       setMyTasks([...myTasks, data as MeetingTask]);
       setNewTaskText("");
     }
