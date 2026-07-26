@@ -24,7 +24,7 @@ import type { WeeklyReport, WeeklyTask, Employee, Department } from "@/types/dat
 interface ReportWithEmployee extends WeeklyReport {
   employee?: Employee;
   departments?: { name: string };
-  week_tasks?: WeeklyTask[];
+  weekly_tasks?: WeeklyTask[];
 }
 
 export default function AdminReports() {
@@ -55,7 +55,7 @@ export default function AdminReports() {
 
     let query = supabase
       .from("weekly_reports")
-      .select("*, employees(*), departments(name), week_tasks(*)")
+      .select("*, employees(*), departments(name), weekly_tasks(*)")
       .eq("week_start", week.weekStartStr)
       .order("created_at");
 
@@ -78,7 +78,7 @@ export default function AdminReports() {
     .filter((emp) => selectedDept === "all" || emp.department_id === selectedDept);
 
   const viewReport = async (report: ReportWithEmployee) => {
-    setReportTasks(report.week_tasks || []);
+    setReportTasks(report.weekly_tasks || []);
     setSelectedReport(report);
   };
 

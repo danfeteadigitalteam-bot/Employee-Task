@@ -27,13 +27,13 @@ export default function EmployeeDashboard() {
       // Fetch current week report
       const { data: reportData } = await supabase
         .from("weekly_reports")
-        .select("status, submitted_at, week_tasks(id, task_type)")
+        .select("status, submitted_at, weekly_tasks(id, task_type)")
         .eq("employee_id", employee.id)
         .eq("week_start", week.weekStartStr)
         .single();
 
       if (reportData) {
-        const tasks = (reportData as any).week_tasks || [];
+        const tasks = (reportData as any).weekly_tasks || [];
         setReport({
           status: reportData.status,
           submitted_at: reportData.submitted_at,

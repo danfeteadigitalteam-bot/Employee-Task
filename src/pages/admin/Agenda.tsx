@@ -49,7 +49,7 @@ export default function AdminAgenda() {
     // Fetch all submitted reports for the selected week
     const { data: reports } = await supabase
       .from("weekly_reports")
-      .select("*, employees(full_name, employee_code), departments(name), week_tasks(*)")
+      .select("*, employees(full_name, employee_code), departments(name), weekly_tasks(*)")
       .eq("week_start", week.weekStartStr)
       .eq("status", "submitted");
 
@@ -73,7 +73,7 @@ export default function AdminAgenda() {
         });
       }
 
-      const tasks = report.week_tasks || [];
+      const tasks = report.weekly_tasks || [];
       const planned = tasks.filter((t: any) => t.task_type === "planned").map((t: any) => t.task_text);
       const completed = tasks.filter((t: any) => t.task_type === "completed").map((t: any) => t.task_text);
 
