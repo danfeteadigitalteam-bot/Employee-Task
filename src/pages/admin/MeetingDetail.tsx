@@ -341,6 +341,20 @@ export default function MeetingDetail() {
           </CardContent>
         </Card>
 
+        {/* Meeting Agenda */}
+        {meeting.agenda_content && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Meeting Agenda</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-sm whitespace-pre-wrap bg-muted/50 p-4 rounded-lg border">
+                {meeting.agenda_content}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Employee Tasks */}
         {employeeGroups.map((group) => (
           <Card key={group.employee.id}>

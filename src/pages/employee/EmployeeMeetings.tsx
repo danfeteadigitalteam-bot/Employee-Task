@@ -251,6 +251,16 @@ export default function EmployeeMeetings() {
           </DialogHeader>
 
           <div className="space-y-6">
+            {/* Meeting Agenda */}
+            {selectedMeeting?.agenda_content && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2">MEETING AGENDA</p>
+                <div className="text-sm whitespace-pre-wrap bg-muted/50 p-4 rounded-lg border">
+                  {selectedMeeting.agenda_content}
+                </div>
+              </div>
+            )}
+
             {/* Published meeting - show tasks */}
             {selectedMeeting?.status === "published" && (
               <div>
