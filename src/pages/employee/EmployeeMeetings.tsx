@@ -22,6 +22,7 @@ export default function EmployeeMeetings() {
   const [discussion, setDiscussion] = useState("");
   const [decisions, setDecisions] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingContribution, setIsLoadingContribution] = useState(false);
 
   useEffect(() => {
     if (!employee) return;
@@ -41,6 +42,9 @@ export default function EmployeeMeetings() {
   const openMeeting = async (meeting: Meeting) => {
     if (!employee) return;
 
+    setSelectedMeeting(meeting);
+    setIsLoadingContribution(true);
+
     // Fetch or create my contribution for this meeting
     const { data: existing } = await supabase
       .from("meeting_department_notes")
@@ -55,7 +59,7 @@ export default function EmployeeMeetings() {
       setDecisions(existing.decisions || "");
     } else {
       // Auto-create a draft contribution row for this employee
-      const { data: newNote } = await supabase
+      const { data: newNote, error: insertError } = await supabase
         .from("meeting_department_notes")
         .insert({
           meeting_id: meeting.id,
@@ -72,6 +76,9 @@ export default function EmployeeMeetings() {
         setMyContribution(newNote as any);
         setDiscussion("");
         setDecisions("");
+      } else {
+        console.error("Failed to create contribution:", insertError);
+        toast.error("Could not load your contribution form. Make sure the database migration has been run.");
       }
     }
 
@@ -84,7 +91,7 @@ export default function EmployeeMeetings() {
 
     if (tasks) setMeetingTasks(tasks as any);
 
-    setSelectedMeeting(meeting);
+    setIsLoadingContribution(false);
   };
 
   const submitContribution = async () => {
@@ -247,6 +254,18 @@ export default function EmployeeMeetings() {
             )}
 
             {/* Draft meeting - show contribution form */}
+            {selectedMeeting?.status === "draft" && isLoadingContribution && (
+              <div className="text-center py-6">
+                <p className="text-sm text-muted-foreground">Loading your contribution...</p>
+              </div>
+            )}
+
+            {selectedMeeting?.status === "draft" && !isLoadingContribution && !myContribution && (
+              <div className="text-center py-6">
+                <p className="text-sm text-muted-foreground">Could not load contribution form. Please refresh or contact admin.</p>
+              </div>
+            )}
+
             {selectedMeeting?.status === "draft" && myContribution && (
               <Card>
                 <CardHeader>
