@@ -50,13 +50,14 @@ export default function AdminMeetings() {
         .eq("is_active", true)
         .neq("role", "admin");
 
-      // Get submission counts per meeting
+      // Get task counts per meeting
       const meetingsWithStats: MeetingWithStats[] = await Promise.all(
         data.map(async (meeting) => {
           const { count: submitted } = await supabase
-            .from("meeting_department_notes")
+            .from("meeting_tasks")
             .select("*", { count: "exact", head: true })
             .eq("meeting_id", meeting.id)
+            .eq("source", "employee")
             .eq("status", "submitted");
 
           return {

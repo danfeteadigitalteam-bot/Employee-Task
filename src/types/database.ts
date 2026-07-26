@@ -94,6 +94,8 @@ export interface MeetingTask {
   department_id: string;
   task_text: string;
   is_checked: boolean;
+  source: "employee" | "admin";
+  status: "draft" | "submitted";
   assigned_week_start: string;
   created_at: string;
   updated_at: string;

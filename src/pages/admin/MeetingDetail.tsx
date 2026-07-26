@@ -18,14 +18,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Send, ArrowLeft, FileText, CheckCircle2, Clock } from "lucide-react";
+import { Plus, Trash2, Send, ArrowLeft, CheckCircle2, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { useWeek } from "@/hooks/useWeek";
-import type { Meeting, MeetingDepartmentNote, MeetingTask, Employee, Department } from "@/types/database";
+import type { Meeting, MeetingTask, Employee } from "@/types/database";
 
-interface DeptGroup {
-  department: Department;
-  contributions: (MeetingDepartmentNote & { employee?: Employee })[];
+interface EmployeeTasks {
+  employee: Employee;
+  tasks: MeetingTask[];
+  submitted: boolean;
 }
 
 export default function MeetingDetail() {
@@ -34,13 +35,11 @@ export default function MeetingDetail() {
   const week = useWeek();
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
-  const [deptGroups, setDeptGroups] = useState<DeptGroup[]>([]);
-  const [meetingTasks, setMeetingTasks] = useState<MeetingTask[]>([]);
+  const [employeeGroups, setEmployeeGroups] = useState<EmployeeTasks[]>([]);
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [overallMinutes, setOverallMinutes] = useState("");
-  const [isEditingMinutes, setIsEditingMinutes] = useState(false);
 
   const [newTaskEmployee, setNewTaskEmployee] = useState("");
   const [newTaskText, setNewTaskText] = useState("");
@@ -59,39 +58,46 @@ export default function MeetingDetail() {
     setMeeting(meetingData as Meeting);
     setOverallMinutes(meetingData.overall_minutes || "");
 
-    // Fetch all contributions for this meeting
-    const { data: notes } = await supabase
-      .from("meeting_department_notes")
-      .select("*, departments(name), employees(full_name, employee_code)")
-      .eq("meeting_id", id);
-
-    // Fetch departments
-    const { data: depts } = await supabase.from("departments").select("*").order("name");
-
-    if (depts && notes) {
-      const groups: DeptGroup[] = (depts as Department[]).map((dept) => ({
-        department: dept,
-        contributions: (notes as any[])
-          .filter((n) => n.department_id === dept.id)
-          .sort((a, b) => (a.employees?.full_name || "").localeCompare(b.employees?.full_name || "")),
-      }));
-      setDeptGroups(groups.filter((g) => g.contributions.length > 0));
-    }
-
-    // Fetch meeting tasks
+    // Fetch all tasks for this meeting
     const { data: tasks } = await supabase
       .from("meeting_tasks")
-      .select("*, employees(full_name, employee_code), departments(name)")
+      .select("*, employees(full_name, employee_code, department_id), departments(name)")
       .eq("meeting_id", id)
       .order("created_at");
 
-    if (tasks) setMeetingTasks(tasks as any);
+    // Group tasks by employee
+    const empMap = new Map<string, EmployeeTasks>();
+
+    if (tasks) {
+      for (const task of tasks as any[]) {
+        const empId = task.employee_id;
+        if (!empMap.has(empId)) {
+          empMap.set(empId, {
+            employee: task.employees,
+            tasks: [],
+            submitted: false,
+          });
+        }
+        empMap.get(empId)!.tasks.push(task);
+      }
+    }
+
+    // Check submission status per employee
+    for (const [, group] of empMap) {
+      const hasSubmitted = group.tasks.some((t) => t.source === "employee" && t.status === "submitted");
+      group.submitted = hasSubmitted;
+    }
+
+    setEmployeeGroups(Array.from(empMap.values()).sort((a, b) =>
+      a.employee.full_name.localeCompare(b.employee.full_name)
+    ));
 
     // Fetch all active employees
     const { data: emps } = await supabase
       .from("employees")
       .select("*, departments(name)")
       .eq("is_active", true)
+      .neq("role", "admin")
       .order("full_name");
 
     if (emps) setAllEmployees(emps as any);
@@ -100,65 +106,6 @@ export default function MeetingDetail() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  const generateOverallMinutes = () => {
-    const dateStr = new Date(meeting!.meeting_date).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-
-    let text = `Meeting Minutes - ${meeting!.title}\nDate: ${dateStr}\n\n`;
-
-    deptGroups.forEach((group) => {
-      text += `${group.department.name} Department\n`;
-      text += `${"─".repeat(40)}\n`;
-
-      group.contributions.forEach((contrib) => {
-        const empName = contrib.employee?.full_name || "Unknown";
-        text += `\n${empName}:\n`;
-
-        if (contrib.discussion) {
-          text += `Discussion:\n${contrib.discussion}\n`;
-        }
-        if (contrib.decisions) {
-          text += `Decisions:\n${contrib.decisions}\n`;
-        }
-      });
-
-      text += `\n`;
-    });
-
-    if (meetingTasks.length > 0) {
-      text += `Assigned Tasks\n`;
-      text += `${"─".repeat(40)}\n`;
-      meetingTasks.forEach((task) => {
-        const empName = (task as any).employees?.full_name || "Unknown";
-        text += `• ${empName}: ${task.task_text} (Week of ${task.assigned_week_start})\n`;
-      });
-    }
-
-    setOverallMinutes(text);
-    setIsEditingMinutes(true);
-    toast.success("Minutes generated from employee contributions");
-  };
-
-  const saveOverallMinutes = async () => {
-    if (!id) return;
-
-    const { error } = await supabase
-      .from("meetings")
-      .update({ overall_minutes: overallMinutes })
-      .eq("id", id);
-
-    if (!error) {
-      setMeeting({ ...meeting!, overall_minutes: overallMinutes });
-      setIsEditingMinutes(false);
-      toast.success("Minutes saved");
-    } else {
-      toast.error("Failed to save minutes");
-    }
-  };
 
   const addTask = async () => {
     if (!id || !newTaskEmployee || !newTaskText.trim()) return;
@@ -173,86 +120,116 @@ export default function MeetingDetail() {
         employee_id: emp.id,
         department_id: emp.department_id,
         task_text: newTaskText.trim(),
+        source: "admin",
+        status: "submitted",
         is_checked: false,
         assigned_week_start: nextWeekStart,
       })
-      .select("*, employees(full_name, employee_code), departments(name)")
+      .select("*, employees(full_name, employee_code, department_id), departments(name)")
       .single();
 
     if (data && !error) {
-      setMeetingTasks([...meetingTasks, data as any]);
       setNewTaskText("");
       setNewTaskEmployee("");
+      fetchData();
     }
   };
 
   const deleteTask = async (taskId: string) => {
     await supabase.from("meeting_tasks").delete().eq("id", taskId);
-    setMeetingTasks(meetingTasks.filter((t) => t.id !== taskId));
+    fetchData();
+  };
+
+  const generateMinutes = () => {
+    const dateStr = new Date(meeting!.meeting_date).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
+    let text = `Meeting Minutes - ${meeting!.title}\nDate: ${dateStr}\n\n`;
+
+    employeeGroups.forEach((group) => {
+      const empTasks = group.tasks.filter((t) => t.source === "employee");
+      const adminTasks = group.tasks.filter((t) => t.source === "admin");
+
+      text += `${group.employee.full_name} (${group.employee.employee_code})\n`;
+
+      if (empTasks.length > 0) {
+        text += `  Tasks:\n`;
+        empTasks.forEach((t) => { text += `    - ${t.task_text}\n`; });
+      }
+      if (adminTasks.length > 0) {
+        text += `  Assigned by Admin:\n`;
+        adminTasks.forEach((t) => { text += `    - ${t.task_text}\n`; });
+      }
+      text += `\n`;
+    });
+
+    setOverallMinutes(text);
+    toast.success("Minutes generated");
+  };
+
+  const saveMinutes = async () => {
+    if (!id) return;
+
+    const { error } = await supabase
+      .from("meetings")
+      .update({ overall_minutes: overallMinutes })
+      .eq("id", id);
+
+    if (!error) {
+      setMeeting({ ...meeting!, overall_minutes: overallMinutes });
+      toast.success("Minutes saved");
+    }
   };
 
   const publishMeeting = async () => {
     if (!id) return;
     setIsPublishing(true);
 
-    const { error } = await supabase
-      .from("meetings")
-      .update({
-        status: "published",
-        published_at: new Date().toISOString(),
-        overall_minutes: overallMinutes,
-      })
-      .eq("id", id);
+    // Copy all tasks to weekly_tasks
+    const allTasks = employeeGroups.flatMap((g) => g.tasks);
 
-    if (error) {
-      toast.error("Failed to publish meeting");
-      setIsPublishing(false);
-      setShowPublishConfirm(false);
-      return;
-    }
-
-    // Auto-create weekly tasks from meeting tasks
-    for (const task of meetingTasks) {
-      if (task.is_checked) continue;
-
-      const { data: existingReport } = await supabase
-        .from("weekly_reports")
+    for (const task of allTasks) {
+      const { data: existing } = await supabase
+        .from("weekly_tasks")
         .select("id")
         .eq("employee_id", task.employee_id)
-        .eq("week_start", task.assigned_week_start)
+        .eq("task_text", task.task_text)
+        .eq("source", "meeting")
         .single();
 
-      let reportId = existingReport?.id;
-
-      if (!reportId) {
-        const weekEnd = new Date(task.assigned_week_start);
-        weekEnd.setDate(weekEnd.getDate() + 6);
-
-        const { data: newReport } = await supabase
+      if (!existing) {
+        const { data: existingReport } = await supabase
           .from("weekly_reports")
-          .insert({
-            employee_id: task.employee_id,
-            department_id: task.department_id,
-            week_start: task.assigned_week_start,
-            week_end: weekEnd.toISOString().split("T")[0],
-            status: "draft",
-          })
           .select("id")
+          .eq("employee_id", task.employee_id)
+          .eq("week_start", task.assigned_week_start)
           .single();
 
-        reportId = newReport?.id;
-      }
+        let reportId = existingReport?.id;
 
-      if (reportId) {
-        const { data: existing } = await supabase
-          .from("weekly_tasks")
-          .select("id")
-          .eq("report_id", reportId)
-          .eq("task_text", task.task_text)
-          .eq("source", "meeting")
-          .single();
+        if (!reportId) {
+          const weekEnd = new Date(task.assigned_week_start);
+          weekEnd.setDate(weekEnd.getDate() + 6);
 
-        if (!existing) {
+          const { data: newReport } = await supabase
+            .from("weekly_reports")
+            .insert({
+              employee_id: task.employee_id,
+              department_id: task.department_id,
+              week_start: task.assigned_week_start,
+              week_end: weekEnd.toISOString().split("T")[0],
+              status: "draft",
+            })
+            .select("id")
+            .single();
+
+          reportId = newReport?.id;
+        }
+
+        if (reportId) {
           const { data: maxOrder } = await supabase
             .from("weekly_tasks")
             .select("sort_order")
@@ -273,10 +250,24 @@ export default function MeetingDetail() {
       }
     }
 
+    const { error } = await supabase
+      .from("meetings")
+      .update({
+        status: "published",
+        published_at: new Date().toISOString(),
+        overall_minutes: overallMinutes,
+      })
+      .eq("id", id);
+
     setIsPublishing(false);
     setShowPublishConfirm(false);
-    setMeeting({ ...meeting!, status: "published", published_at: new Date().toISOString() });
-    toast.success("Meeting published. Tasks assigned to employees.");
+
+    if (!error) {
+      setMeeting({ ...meeting!, status: "published", published_at: new Date().toISOString() });
+      toast.success("Meeting published. Tasks added to employee checklists.");
+    } else {
+      toast.error("Failed to publish");
+    }
   };
 
   if (!meeting) {
@@ -289,12 +280,8 @@ export default function MeetingDetail() {
     );
   }
 
-  // Stats
-  const totalContributions = deptGroups.reduce((sum, g) => sum + g.contributions.length, 0);
-  const submittedCount = deptGroups.reduce(
-    (sum, g) => sum + g.contributions.filter((c) => c.status === "submitted").length,
-    0
-  );
+  const totalTasks = employeeGroups.reduce((sum, g) => sum + g.tasks.length, 0);
+  const submittedCount = employeeGroups.filter((g) => g.submitted).length;
 
   return (
     <PageLayout
@@ -322,24 +309,18 @@ export default function MeetingDetail() {
       }
     >
       <div className="space-y-6">
-        {/* Submission Status */}
+        {/* Status Summary */}
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">Employee Contributions</p>
+                <p className="text-sm font-medium">Employee Tasks</p>
                 <p className="text-xs text-muted-foreground">
-                  {submittedCount} of {totalContributions} submitted
+                  {submittedCount} of {employeeGroups.length} employees submitted · {totalTasks} total tasks
                 </p>
               </div>
-              {meeting.status === "draft" && submittedCount > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={generateOverallMinutes}
-                  className="gap-1"
-                >
-                  <FileText className="h-3 w-3" />
+              {meeting.status === "draft" && totalTasks > 0 && (
+                <Button variant="outline" size="sm" onClick={generateMinutes} className="gap-1">
                   Generate Minutes
                 </Button>
               )}
@@ -347,61 +328,68 @@ export default function MeetingDetail() {
           </CardContent>
         </Card>
 
-        {/* Employee Contributions by Department */}
-        {deptGroups.map((group) => (
-          <Card key={group.department.id}>
+        {/* Employee Tasks */}
+        {employeeGroups.map((group) => (
+          <Card key={group.employee.id}>
             <CardHeader>
-              <CardTitle className="text-base">{group.department.name} Department</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">
+                  {group.employee.full_name}
+                  <span className="text-xs text-muted-foreground font-normal ml-2">
+                    {group.employee.employee_code}
+                  </span>
+                </CardTitle>
+                {group.submitted ? (
+                  <Badge variant="default" className="gap-1 text-xs">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Submitted
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="gap-1 text-xs">
+                    <Clock className="h-3 w-3" />
+                    Pending
+                  </Badge>
+                )}
+              </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {group.contributions.map((contrib) => (
-                <div key={contrib.id} className="border rounded-lg p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">{contrib.employee?.full_name}</p>
-                      <p className="text-xs text-muted-foreground">{contrib.employee?.employee_code}</p>
-                    </div>
-                    {contrib.status === "submitted" ? (
-                      <Badge variant="default" className="gap-1 text-xs">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Submitted
+            <CardContent>
+              {group.tasks.length > 0 ? (
+                <div className="space-y-2">
+                  {group.tasks.map((task) => (
+                    <div key={task.id} className="flex items-center gap-3 p-2 rounded border">
+                      <Checkbox checked={task.is_checked} disabled />
+                      <span className="flex-1 text-sm">{task.task_text}</span>
+                      <Badge variant={task.source === "admin" ? "secondary" : "outline"} className="text-xs">
+                        {task.source === "admin" ? "Admin" : "Employee"}
                       </Badge>
-                    ) : (
-                      <Badge variant="outline" className="gap-1 text-xs">
-                        <Clock className="h-3 w-3" />
-                        Draft
-                      </Badge>
-                    )}
-                  </div>
-
-                  {contrib.discussion && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-1">Discussion</p>
-                      <p className="text-sm whitespace-pre-wrap">{contrib.discussion}</p>
+                      <span className="text-xs text-muted-foreground">
+                        Week of {task.assigned_week_start}
+                      </span>
+                      {meeting.status === "draft" && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-red-500"
+                          onClick={() => deleteTask(task.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
                     </div>
-                  )}
-
-                  {contrib.decisions && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-1">Decisions</p>
-                      <p className="text-sm whitespace-pre-wrap">{contrib.decisions}</p>
-                    </div>
-                  )}
-
-                  {!contrib.discussion && !contrib.decisions && (
-                    <p className="text-xs text-muted-foreground italic">No contribution yet</p>
-                  )}
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <p className="text-sm text-muted-foreground">No tasks yet</p>
+              )}
             </CardContent>
           </Card>
         ))}
 
-        {deptGroups.length === 0 && (
+        {employeeGroups.length === 0 && (
           <Card>
             <CardContent className="py-8 text-center">
               <p className="text-sm text-muted-foreground">
-                No employee contributions yet. Employees will write their parts in the meeting minutes.
+                No employee tasks yet. Employees will add their checklists in the meeting.
               </p>
             </CardContent>
           </Card>
@@ -412,69 +400,40 @@ export default function MeetingDetail() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Overall Meeting Minutes</CardTitle>
-              {meeting.status === "draft" && !isEditingMinutes && overallMinutes && (
-                <Button variant="outline" size="sm" onClick={() => setIsEditingMinutes(true)}>
+              {meeting.status === "draft" && overallMinutes && (
+                <Button variant="outline" size="sm" onClick={() => {}}>
                   Edit
                 </Button>
               )}
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {isEditingMinutes ? (
-              <>
-                <Textarea
-                  value={overallMinutes}
-                  onChange={(e) => setOverallMinutes(e.target.value)}
-                  rows={15}
-                  className="font-mono text-sm"
-                />
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={saveOverallMinutes}>Save</Button>
-                  <Button size="sm" variant="ghost" onClick={() => { setIsEditingMinutes(false); setOverallMinutes(meeting.overall_minutes || ""); }}>
-                    Cancel
-                  </Button>
-                </div>
-              </>
-            ) : overallMinutes ? (
-              <div className="text-sm whitespace-pre-wrap bg-muted/50 p-4 rounded-lg">
-                {overallMinutes}
-              </div>
+          <CardContent>
+            {overallMinutes ? (
+              <Textarea
+                value={overallMinutes}
+                onChange={(e) => setOverallMinutes(e.target.value)}
+                rows={12}
+                className="font-mono text-sm"
+                disabled={meeting.status === "published"}
+              />
             ) : (
               <p className="text-sm text-muted-foreground">
-                Click "Generate Minutes" to compile employee contributions into overall meeting minutes.
+                Click "Generate Minutes" to compile all tasks into meeting minutes.
               </p>
+            )}
+            {meeting.status === "draft" && overallMinutes && (
+              <Button size="sm" onClick={saveMinutes} className="mt-2">Save Minutes</Button>
             )}
           </CardContent>
         </Card>
 
-        {/* Next-Week Tasks */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Next-Week Tasks</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {meetingTasks.length > 0 && (
-              <div className="space-y-2">
-                {meetingTasks.map((task) => (
-                  <div key={task.id} className="flex items-center gap-3 p-2 rounded border">
-                    <Checkbox checked={task.is_checked} disabled />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm">{task.task_text}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {(task as any).employees?.full_name} · Week of {task.assigned_week_start}
-                      </p>
-                    </div>
-                    {meeting.status === "draft" && (
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={() => deleteTask(task.id)}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {meeting.status === "draft" && (
+        {/* Add Admin Task */}
+        {meeting.status === "draft" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Add Task for Employee</CardTitle>
+            </CardHeader>
+            <CardContent>
               <div className="flex flex-col sm:flex-row gap-2">
                 <Select value={newTaskEmployee} onValueChange={(v) => setNewTaskEmployee(v ?? "")}>
                   <SelectTrigger className="w-full sm:w-56">
@@ -511,16 +470,16 @@ export default function MeetingDetail() {
                   />
                 </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <ConfirmDialog
         open={showPublishConfirm}
         onOpenChange={setShowPublishConfirm}
-        title="Publish Meeting Minutes"
-        description="This will publish the meeting minutes and assign tasks to employee checklists. Continue?"
+        title="Publish Meeting"
+        description="This will publish the meeting and add all tasks to employee weekly checklists. Continue?"
         confirmLabel="Publish"
         onConfirm={publishMeeting}
       />
