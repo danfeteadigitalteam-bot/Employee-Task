@@ -62,6 +62,7 @@ export interface Meeting {
   week_end: string;
   attendees: string[];
   agenda_content: string;
+  overall_minutes: string;
   status: "draft" | "published";
   published_at: string | null;
   created_by: string;
@@ -75,11 +76,15 @@ export interface MeetingDepartmentNote {
   id: string;
   meeting_id: string;
   department_id: string;
+  employee_id: string;
   discussion: string;
   decisions: string;
+  status: "draft" | "submitted";
+  submitted_at: string | null;
   created_at: string;
   updated_at: string;
   department?: Department;
+  employee?: Employee;
 }
 
 export interface MeetingTask {

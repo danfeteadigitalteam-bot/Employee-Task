@@ -18,13 +18,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Send, ArrowLeft } from "lucide-react";
+import { Plus, Trash2, Send, ArrowLeft, FileText, CheckCircle2, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { useWeek } from "@/hooks/useWeek";
 import type { Meeting, MeetingDepartmentNote, MeetingTask, Employee, Department } from "@/types/database";
 
-interface DeptWithNotes extends Department {
-  notes?: MeetingDepartmentNote;
+interface DeptGroup {
+  department: Department;
+  contributions: (MeetingDepartmentNote & { employee?: Employee })[];
 }
 
 export default function MeetingDetail() {
@@ -33,17 +34,16 @@ export default function MeetingDetail() {
   const week = useWeek();
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
-  const [departments, setDepartments] = useState<DeptWithNotes[]>([]);
+  const [deptGroups, setDeptGroups] = useState<DeptGroup[]>([]);
   const [meetingTasks, setMeetingTasks] = useState<MeetingTask[]>([]);
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [overallMinutes, setOverallMinutes] = useState("");
+  const [isEditingMinutes, setIsEditingMinutes] = useState(false);
 
-  // New task form
   const [newTaskEmployee, setNewTaskEmployee] = useState("");
   const [newTaskText, setNewTaskText] = useState("");
-
-  // Next week assignment
   const [nextWeekStart, setNextWeekStart] = useState(week.nextWeek.weekStartStr);
 
   const fetchData = useCallback(async () => {
@@ -55,72 +55,111 @@ export default function MeetingDetail() {
       .eq("id", id)
       .single();
 
-    if (meetingData) {
-      setMeeting(meetingData as Meeting);
+    if (!meetingData) return;
+    setMeeting(meetingData as Meeting);
+    setOverallMinutes(meetingData.overall_minutes || "");
 
-      // Fetch department notes
-      const { data: notes } = await supabase
-        .from("meeting_department_notes")
-        .select("*, departments(name)")
-        .eq("meeting_id", id);
+    // Fetch all contributions for this meeting
+    const { data: notes } = await supabase
+      .from("meeting_department_notes")
+      .select("*, departments(name), employees(full_name, employee_code)")
+      .eq("meeting_id", id);
 
-      // Fetch departments
-      const { data: depts } = await supabase.from("departments").select("*").order("name");
+    // Fetch departments
+    const { data: depts } = await supabase.from("departments").select("*").order("name");
 
-      if (depts && notes) {
-        const deptWithNotes = (depts as Department[]).map((dept) => {
-          const note = (notes as any[]).find((n) => n.department_id === dept.id);
-          return { ...dept, notes: note || null };
-        });
-        setDepartments(deptWithNotes);
-      }
-
-      // Fetch meeting tasks
-      const { data: tasks } = await supabase
-        .from("meeting_tasks")
-        .select("*, employees(full_name, employee_code), departments(name)")
-        .eq("meeting_id", id)
-        .order("created_at");
-
-      if (tasks) setMeetingTasks(tasks as any);
-
-      // Fetch all active employees
-      const { data: emps } = await supabase
-        .from("employees")
-        .select("*, departments(name)")
-        .eq("is_active", true)
-        .order("full_name");
-
-      if (emps) setAllEmployees(emps as any);
+    if (depts && notes) {
+      const groups: DeptGroup[] = (depts as Department[]).map((dept) => ({
+        department: dept,
+        contributions: (notes as any[])
+          .filter((n) => n.department_id === dept.id)
+          .sort((a, b) => (a.employees?.full_name || "").localeCompare(b.employees?.full_name || "")),
+      }));
+      setDeptGroups(groups.filter((g) => g.contributions.length > 0));
     }
+
+    // Fetch meeting tasks
+    const { data: tasks } = await supabase
+      .from("meeting_tasks")
+      .select("*, employees(full_name, employee_code), departments(name)")
+      .eq("meeting_id", id)
+      .order("created_at");
+
+    if (tasks) setMeetingTasks(tasks as any);
+
+    // Fetch all active employees
+    const { data: emps } = await supabase
+      .from("employees")
+      .select("*, departments(name)")
+      .eq("is_active", true)
+      .order("full_name");
+
+    if (emps) setAllEmployees(emps as any);
   }, [id]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // Update discussion/decisions
-  const updateNotes = async (deptId: string, field: "discussion" | "decisions", value: string) => {
-    if (!id) return;
+  const generateOverallMinutes = () => {
+    const dateStr = new Date(meeting!.meeting_date).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
 
-    const dept = departments.find((d) => d.id === deptId);
-    if (!dept?.notes) return;
+    let text = `Meeting Minutes - ${meeting!.title}\nDate: ${dateStr}\n\n`;
 
-    await supabase
-      .from("meeting_department_notes")
-      .update({ [field]: value })
-      .eq("id", dept.notes.id);
+    deptGroups.forEach((group) => {
+      text += `${group.department.name} Department\n`;
+      text += `${"─".repeat(40)}\n`;
 
-    setDepartments(
-      departments.map((d) =>
-        d.id === deptId
-          ? { ...d, notes: { ...d.notes!, [field]: value } }
-          : d
-      )
-    );
+      group.contributions.forEach((contrib) => {
+        const empName = contrib.employee?.full_name || "Unknown";
+        text += `\n${empName}:\n`;
+
+        if (contrib.discussion) {
+          text += `Discussion:\n${contrib.discussion}\n`;
+        }
+        if (contrib.decisions) {
+          text += `Decisions:\n${contrib.decisions}\n`;
+        }
+      });
+
+      text += `\n`;
+    });
+
+    if (meetingTasks.length > 0) {
+      text += `Assigned Tasks\n`;
+      text += `${"─".repeat(40)}\n`;
+      meetingTasks.forEach((task) => {
+        const empName = (task as any).employees?.full_name || "Unknown";
+        text += `• ${empName}: ${task.task_text} (Week of ${task.assigned_week_start})\n`;
+      });
+    }
+
+    setOverallMinutes(text);
+    setIsEditingMinutes(true);
+    toast.success("Minutes generated from employee contributions");
   };
 
-  // Add meeting task
+  const saveOverallMinutes = async () => {
+    if (!id) return;
+
+    const { error } = await supabase
+      .from("meetings")
+      .update({ overall_minutes: overallMinutes })
+      .eq("id", id);
+
+    if (!error) {
+      setMeeting({ ...meeting!, overall_minutes: overallMinutes });
+      setIsEditingMinutes(false);
+      toast.success("Minutes saved");
+    } else {
+      toast.error("Failed to save minutes");
+    }
+  };
+
   const addTask = async () => {
     if (!id || !newTaskEmployee || !newTaskText.trim()) return;
 
@@ -147,23 +186,21 @@ export default function MeetingDetail() {
     }
   };
 
-  // Delete meeting task
   const deleteTask = async (taskId: string) => {
     await supabase.from("meeting_tasks").delete().eq("id", taskId);
     setMeetingTasks(meetingTasks.filter((t) => t.id !== taskId));
   };
 
-  // Publish meeting
   const publishMeeting = async () => {
     if (!id) return;
     setIsPublishing(true);
 
-    // Update meeting status
     const { error } = await supabase
       .from("meetings")
       .update({
         status: "published",
         published_at: new Date().toISOString(),
+        overall_minutes: overallMinutes,
       })
       .eq("id", id);
 
@@ -174,11 +211,10 @@ export default function MeetingDetail() {
       return;
     }
 
-    // Create weekly tasks from meeting tasks
+    // Auto-create weekly tasks from meeting tasks
     for (const task of meetingTasks) {
       if (task.is_checked) continue;
 
-      // Find or create report for the assigned week
       const { data: existingReport } = await supabase
         .from("weekly_reports")
         .select("id")
@@ -208,7 +244,6 @@ export default function MeetingDetail() {
       }
 
       if (reportId) {
-        // Check for duplicate
         const { data: existing } = await supabase
           .from("weekly_tasks")
           .select("id")
@@ -254,6 +289,13 @@ export default function MeetingDetail() {
     );
   }
 
+  // Stats
+  const totalContributions = deptGroups.reduce((sum, g) => sum + g.contributions.length, 0);
+  const submittedCount = deptGroups.reduce(
+    (sum, g) => sum + g.contributions.filter((c) => c.status === "submitted").length,
+    0
+  );
+
   return (
     <PageLayout
       title={meeting.title}
@@ -266,66 +308,144 @@ export default function MeetingDetail() {
       actions={
         <div className="flex items-center gap-2">
           <StatusBadge status={meeting.status} />
+          <Button variant="outline" size="sm" onClick={() => navigate("/admin/meetings")}>
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back
+          </Button>
           {meeting.status === "draft" && (
-            <>
-              <Button variant="outline" size="sm" onClick={() => navigate("/admin/meetings")}>
-                <ArrowLeft className="h-4 w-4 mr-1" />
-                Back
-              </Button>
-              <Button size="sm" onClick={() => setShowPublishConfirm(true)} className="gap-1" disabled={isPublishing}>
-                <Send className="h-3 w-3" />
-                Publish
-              </Button>
-            </>
+            <Button size="sm" onClick={() => setShowPublishConfirm(true)} className="gap-1" disabled={isPublishing}>
+              <Send className="h-3 w-3" />
+              Publish
+            </Button>
           )}
         </div>
       }
     >
       <div className="space-y-6">
-        {/* Attendees */}
-        {meeting.attendees && meeting.attendees.length > 0 && (
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs font-medium text-muted-foreground mb-2">ATTENDEES</p>
-              <div className="flex flex-wrap gap-2">
-                {meeting.attendees.map((name, i) => (
-                  <Badge key={i} variant="secondary" className="text-xs">{name}</Badge>
-                ))}
+        {/* Submission Status */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Employee Contributions</p>
+                <p className="text-xs text-muted-foreground">
+                  {submittedCount} of {totalContributions} submitted
+                </p>
               </div>
+              {meeting.status === "draft" && submittedCount > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={generateOverallMinutes}
+                  className="gap-1"
+                >
+                  <FileText className="h-3 w-3" />
+                  Generate Minutes
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Employee Contributions by Department */}
+        {deptGroups.map((group) => (
+          <Card key={group.department.id}>
+            <CardHeader>
+              <CardTitle className="text-base">{group.department.name} Department</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {group.contributions.map((contrib) => (
+                <div key={contrib.id} className="border rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">{contrib.employee?.full_name}</p>
+                      <p className="text-xs text-muted-foreground">{contrib.employee?.employee_code}</p>
+                    </div>
+                    {contrib.status === "submitted" ? (
+                      <Badge variant="default" className="gap-1 text-xs">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Submitted
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="gap-1 text-xs">
+                        <Clock className="h-3 w-3" />
+                        Draft
+                      </Badge>
+                    )}
+                  </div>
+
+                  {contrib.discussion && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-1">Discussion</p>
+                      <p className="text-sm whitespace-pre-wrap">{contrib.discussion}</p>
+                    </div>
+                  )}
+
+                  {contrib.decisions && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-1">Decisions</p>
+                      <p className="text-sm whitespace-pre-wrap">{contrib.decisions}</p>
+                    </div>
+                  )}
+
+                  {!contrib.discussion && !contrib.decisions && (
+                    <p className="text-xs text-muted-foreground italic">No contribution yet</p>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        ))}
+
+        {deptGroups.length === 0 && (
+          <Card>
+            <CardContent className="py-8 text-center">
+              <p className="text-sm text-muted-foreground">
+                No employee contributions yet. Employees will write their parts in the meeting minutes.
+              </p>
             </CardContent>
           </Card>
         )}
 
-        {/* Department Discussions */}
-        {departments.map((dept) => (
-          <Card key={dept.id}>
-            <CardHeader>
-              <CardTitle className="text-base">{dept.name} Department</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Discussion</Label>
+        {/* Overall Minutes */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Overall Meeting Minutes</CardTitle>
+              {meeting.status === "draft" && !isEditingMinutes && overallMinutes && (
+                <Button variant="outline" size="sm" onClick={() => setIsEditingMinutes(true)}>
+                  Edit
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {isEditingMinutes ? (
+              <>
                 <Textarea
-                  placeholder={`Discuss ${dept.name} department topics...`}
-                  value={dept.notes?.discussion || ""}
-                  onChange={(e) => updateNotes(dept.id, "discussion", e.target.value)}
-                  disabled={meeting.status === "published"}
-                  rows={3}
+                  value={overallMinutes}
+                  onChange={(e) => setOverallMinutes(e.target.value)}
+                  rows={15}
+                  className="font-mono text-sm"
                 />
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={saveOverallMinutes}>Save</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setIsEditingMinutes(false); setOverallMinutes(meeting.overall_minutes || ""); }}>
+                    Cancel
+                  </Button>
+                </div>
+              </>
+            ) : overallMinutes ? (
+              <div className="text-sm whitespace-pre-wrap bg-muted/50 p-4 rounded-lg">
+                {overallMinutes}
               </div>
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Decisions & Strategies</Label>
-                <Textarea
-                  placeholder="Record decisions and strategies..."
-                  value={dept.notes?.decisions || ""}
-                  onChange={(e) => updateNotes(dept.id, "decisions", e.target.value)}
-                  disabled={meeting.status === "published"}
-                  rows={3}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Click "Generate Minutes" to compile employee contributions into overall meeting minutes.
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Next-Week Tasks */}
         <Card>
@@ -400,7 +520,7 @@ export default function MeetingDetail() {
         open={showPublishConfirm}
         onOpenChange={setShowPublishConfirm}
         title="Publish Meeting Minutes"
-        description="This will publish the meeting minutes, make them visible to employees, and assign tasks to employee checklists. Continue?"
+        description="This will publish the meeting minutes and assign tasks to employee checklists. Continue?"
         confirmLabel="Publish"
         onConfirm={publishMeeting}
       />

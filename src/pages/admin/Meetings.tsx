@@ -20,11 +20,16 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Meeting } from "@/types/database";
 
+interface MeetingWithStats extends Meeting {
+  total_employees?: number;
+  submitted_count?: number;
+}
+
 export default function AdminMeetings() {
   const { employee: admin } = useAuth();
   const navigate = useNavigate();
   const week = useWeek();
-  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [meetings, setMeetings] = useState<MeetingWithStats[]>([]);
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [newTitle, setNewTitle] = useState("Weekly Meeting");
   const [newDate, setNewDate] = useState(new Date().toISOString().split("T")[0]);
@@ -36,7 +41,33 @@ export default function AdminMeetings() {
         .select("*")
         .order("meeting_date", { ascending: false });
 
-      if (data) setMeetings(data as Meeting[]);
+      if (!data) return;
+
+      // Get employee count
+      const { count: empCount } = await supabase
+        .from("employees")
+        .select("*", { count: "exact", head: true })
+        .eq("is_active", true)
+        .neq("role", "admin");
+
+      // Get submission counts per meeting
+      const meetingsWithStats: MeetingWithStats[] = await Promise.all(
+        data.map(async (meeting) => {
+          const { count: submitted } = await supabase
+            .from("meeting_department_notes")
+            .select("*", { count: "exact", head: true })
+            .eq("meeting_id", meeting.id)
+            .eq("status", "submitted");
+
+          return {
+            ...meeting,
+            total_employees: empCount || 0,
+            submitted_count: submitted || 0,
+          };
+        })
+      );
+
+      setMeetings(meetingsWithStats);
     };
 
     fetchMeetings();
@@ -54,6 +85,7 @@ export default function AdminMeetings() {
         week_end: week.weekEndStr,
         attendees: [],
         agenda_content: "",
+        overall_minutes: "",
         status: "draft",
         created_by: admin.id,
       })
@@ -61,7 +93,7 @@ export default function AdminMeetings() {
       .single();
 
     if (data && !error) {
-      toast.success("Meeting created");
+      toast.success("Meeting created. Employees can now write their contributions.");
       setShowNewDialog(false);
       navigate(`/admin/meetings/${data.id}`);
     }
@@ -70,7 +102,7 @@ export default function AdminMeetings() {
   return (
     <PageLayout
       title="Meeting Minutes"
-      description="Create and manage meeting minutes"
+      description="Create meetings and review employee contributions"
       actions={
         <Button onClick={() => setShowNewDialog(true)} className="gap-2">
           <Plus className="h-4 w-4" />
@@ -82,11 +114,8 @@ export default function AdminMeetings() {
         <Card>
           <CardContent className="py-12 text-center">
             <Calendar className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground mb-4">No meetings yet. Generate an agenda first or create a new meeting.</p>
-            <div className="flex justify-center gap-2">
-              <Button variant="outline" onClick={() => navigate("/admin/agenda")}>Go to Agenda</Button>
-              <Button onClick={() => setShowNewDialog(true)}>New Meeting</Button>
-            </div>
+            <p className="text-sm text-muted-foreground mb-4">No meetings yet. Create a new meeting for employees to contribute.</p>
+            <Button onClick={() => setShowNewDialog(true)}>New Meeting</Button>
           </CardContent>
         </Card>
       ) : (
@@ -109,9 +138,9 @@ export default function AdminMeetings() {
                         day: "numeric",
                       })}
                     </p>
-                    {meeting.attendees && meeting.attendees.length > 0 && (
+                    {meeting.status === "draft" && meeting.total_employees !== undefined && (
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {meeting.attendees.length} attendees
+                        {meeting.submitted_count} of {meeting.total_employees} employees submitted
                       </p>
                     )}
                   </div>
