@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { Plus, Pencil, Trash2, Check, X, Send } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, X, Send, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import type { WeeklyReport, WeeklyTask } from "@/types/database";
 
@@ -23,6 +23,7 @@ export default function WeeklyReportPage() {
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(true);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Inline editing state
   const [newTaskText, setNewTaskText] = useState("");
@@ -58,7 +59,7 @@ export default function WeeklyReportPage() {
       }
     } else {
       // Create new report
-      const { data: newReport } = await supabase
+      const { data: newReport, error: createError } = await supabase
         .from("weekly_reports")
         .insert({
           employee_id: employee.id,
@@ -72,6 +73,9 @@ export default function WeeklyReportPage() {
 
       if (newReport) {
         setReport(newReport as WeeklyReport);
+      } else {
+        console.error("Failed to create report:", createError);
+        toast.error("Failed to create report: " + (createError?.message || "Unknown error"));
       }
     }
     setLoading(false);
@@ -96,7 +100,7 @@ export default function WeeklyReportPage() {
   const addTask = async () => {
     if (!newTaskText.trim() || !report || isReadOnly) return;
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("weekly_tasks")
       .insert({
         report_id: report.id,
@@ -109,6 +113,12 @@ export default function WeeklyReportPage() {
       .select()
       .single();
 
+    if (error) {
+      console.error("Add task error:", error);
+      toast.error("Failed to add task: " + error.message);
+      return;
+    }
+
     if (data) {
       setTasks([...tasks, data as WeeklyTask]);
       setNewTaskText("");
@@ -119,7 +129,7 @@ export default function WeeklyReportPage() {
   const addCompletedTask = async () => {
     if (!newCompletedText.trim() || !report || isReadOnly) return;
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("weekly_tasks")
       .insert({
         report_id: report.id,
@@ -131,6 +141,12 @@ export default function WeeklyReportPage() {
       })
       .select()
       .single();
+
+    if (error) {
+      console.error("Add completed task error:", error);
+      toast.error("Failed to add task: " + error.message);
+      return;
+    }
 
     if (data) {
       setCompletedTasks([...completedTasks, data as WeeklyTask]);
@@ -172,6 +188,22 @@ export default function WeeklyReportPage() {
       setTasks(tasks.filter((t) => t.id !== task.id));
     } else {
       setCompletedTasks(completedTasks.filter((t) => t.id !== task.id));
+    }
+  };
+
+  // Reset report to draft
+  const resetReport = async () => {
+    if (!report) return;
+    const { error } = await supabase
+      .from("weekly_reports")
+      .update({ status: "draft", submitted_at: null })
+      .eq("id", report.id);
+
+    if (!error) {
+      setReport({ ...report, status: "draft", submitted_at: null });
+      toast.success("Report reset to draft");
+    } else {
+      toast.error("Failed to reset report");
     }
   };
 
@@ -408,10 +440,14 @@ export default function WeeklyReportPage() {
         )}
 
         {isReadOnly && report && (
-          <div className="text-center py-4">
+          <div className="text-center py-4 space-y-3">
             <p className="text-sm text-muted-foreground">
               Report submitted on {report.submitted_at ? new Date(report.submitted_at).toLocaleString() : "—"}
             </p>
+            <Button variant="outline" size="sm" onClick={() => setShowResetConfirm(true)} className="gap-2">
+              <RotateCcw className="h-3 w-3" />
+              Reset to Draft
+            </Button>
           </div>
         )}
       </div>
@@ -423,6 +459,15 @@ export default function WeeklyReportPage() {
         description="Once submitted, your report will be read-only. Are you sure you want to submit?"
         confirmLabel="Submit"
         onConfirm={submitReport}
+      />
+
+      <ConfirmDialog
+        open={showResetConfirm}
+        onOpenChange={setShowResetConfirm}
+        title="Reset Report to Draft"
+        description="This will set your report back to draft status so you can edit it again. Continue?"
+        confirmLabel="Reset"
+        onConfirm={resetReport}
       />
     </PageLayout>
   );

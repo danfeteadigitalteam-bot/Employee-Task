@@ -188,65 +188,78 @@ export default function MeetingDetail() {
     if (!id) return;
     setIsPublishing(true);
 
-    // Copy all tasks to weekly_tasks
     const allTasks = employeeGroups.flatMap((g) => g.tasks);
 
+    // Group tasks by employee and week
+    const tasksByEmployeeWeek = new Map<string, typeof allTasks>();
     for (const task of allTasks) {
-      const { data: existing } = await supabase
-        .from("weekly_tasks")
+      const key = `${task.employee_id}::${task.assigned_week_start}`;
+      if (!tasksByEmployeeWeek.has(key)) {
+        tasksByEmployeeWeek.set(key, []);
+      }
+      tasksByEmployeeWeek.get(key)!.push(task);
+    }
+
+    for (const [key, empTasks] of tasksByEmployeeWeek) {
+      const [empId, weekStart] = key.split("::");
+
+      // Remove old meeting-sourced tasks for this employee/week from weekly_tasks
+      const { data: existingReport } = await supabase
+        .from("weekly_reports")
         .select("id")
-        .eq("employee_id", task.employee_id)
-        .eq("task_text", task.task_text)
-        .eq("source", "meeting")
+        .eq("employee_id", empId)
+        .eq("week_start", weekStart)
         .single();
 
-      if (!existing) {
-        const { data: existingReport } = await supabase
+      if (existingReport) {
+        await supabase
+          .from("weekly_tasks")
+          .delete()
+          .eq("report_id", existingReport.id)
+          .eq("source", "meeting");
+
+        // Reset report status to draft so employee can edit
+        await supabase
           .from("weekly_reports")
+          .update({ status: "draft", submitted_at: null })
+          .eq("id", existingReport.id);
+      }
+
+      // Find or create report
+      let reportId = existingReport?.id;
+
+      if (!reportId) {
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+
+        const { data: newReport } = await supabase
+          .from("weekly_reports")
+          .insert({
+            employee_id: empId,
+            department_id: empTasks[0].department_id,
+            week_start: weekStart,
+            week_end: weekEnd.toISOString().split("T")[0],
+            status: "draft",
+          })
           .select("id")
-          .eq("employee_id", task.employee_id)
-          .eq("week_start", task.assigned_week_start)
           .single();
 
-        let reportId = existingReport?.id;
+        reportId = newReport?.id;
+      }
 
-        if (!reportId) {
-          const weekEnd = new Date(task.assigned_week_start);
-          weekEnd.setDate(weekEnd.getDate() + 6);
+      if (!reportId) continue;
 
-          const { data: newReport } = await supabase
-            .from("weekly_reports")
-            .insert({
-              employee_id: task.employee_id,
-              department_id: task.department_id,
-              week_start: task.assigned_week_start,
-              week_end: weekEnd.toISOString().split("T")[0],
-              status: "draft",
-            })
-            .select("id")
-            .single();
-
-          reportId = newReport?.id;
-        }
-
-        if (reportId) {
-          const { data: maxOrder } = await supabase
-            .from("weekly_tasks")
-            .select("sort_order")
-            .eq("report_id", reportId)
-            .order("sort_order", { ascending: false })
-            .limit(1)
-            .single();
-
-          await supabase.from("weekly_tasks").insert({
-            report_id: reportId,
-            employee_id: task.employee_id,
-            task_type: "planned",
-            task_text: task.task_text,
-            source: "meeting",
-            sort_order: (maxOrder?.sort_order ?? -1) + 1,
-          });
-        }
+      // Insert all meeting tasks for this employee/week
+      for (let i = 0; i < empTasks.length; i++) {
+        const task = empTasks[i];
+        await supabase.from("weekly_tasks").insert({
+          report_id: reportId,
+          employee_id: task.employee_id,
+          task_type: "planned",
+          task_text: task.task_text,
+          source: "meeting",
+          sort_order: i,
+        });
       }
     }
 
@@ -264,7 +277,7 @@ export default function MeetingDetail() {
 
     if (!error) {
       setMeeting({ ...meeting!, status: "published", published_at: new Date().toISOString() });
-      toast.success("Meeting published. Tasks added to employee checklists.");
+      toast.success("Meeting published. Tasks added to employee weekly reports.");
     } else {
       toast.error("Failed to publish");
     }
