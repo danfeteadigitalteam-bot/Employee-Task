@@ -21,7 +21,7 @@ import {
 import { Plus, Trash2, Send, ArrowLeft, CheckCircle2, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { useWeek } from "@/hooks/useWeek";
-import type { Meeting, MeetingTask, Employee } from "@/types/database";
+import type { Meeting, MeetingTask, MeetingDepartmentNote, Employee } from "@/types/database";
 
 interface EmployeeTasks {
   employee: Employee;
@@ -36,7 +36,10 @@ export default function MeetingDetail() {
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [employeeGroups, setEmployeeGroups] = useState<EmployeeTasks[]>([]);
+  const [departmentNotes, setDepartmentNotes] = useState<MeetingDepartmentNote[]>([]);
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [overallMinutes, setOverallMinutes] = useState("");
@@ -92,6 +95,15 @@ export default function MeetingDetail() {
       a.employee.full_name.localeCompare(b.employee.full_name)
     ));
 
+    // Fetch department notes (discussion/decisions from employees)
+    const { data: notes } = await supabase
+      .from("meeting_department_notes")
+      .select("*, employees(full_name, employee_code), departments(name)")
+      .eq("meeting_id", id)
+      .order("created_at");
+
+    if (notes) setDepartmentNotes(notes as any);
+
     // Fetch all active employees
     const { data: emps } = await supabase
       .from("employees")
@@ -129,6 +141,52 @@ export default function MeetingDetail() {
       .single();
 
     if (data && !error) {
+      // Also copy to weekly_tasks so it appears in employee's weekly report
+      const { data: existingReport } = await supabase
+        .from("weekly_reports")
+        .select("id")
+        .eq("employee_id", emp.id)
+        .eq("week_start", nextWeekStart)
+        .single();
+
+      let reportId = existingReport?.id;
+
+      if (!reportId) {
+        const weekEnd = new Date(nextWeekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        const { data: newReport } = await supabase
+          .from("weekly_reports")
+          .insert({
+            employee_id: emp.id,
+            department_id: emp.department_id,
+            week_start: nextWeekStart,
+            week_end: weekEnd.toISOString().split("T")[0],
+            status: "draft",
+          })
+          .select("id")
+          .single();
+        reportId = newReport?.id;
+      }
+
+      if (reportId) {
+        const { data: maxOrder } = await supabase
+          .from("weekly_tasks")
+          .select("sort_order")
+          .eq("report_id", reportId)
+          .order("sort_order", { ascending: false })
+          .limit(1)
+          .single();
+
+        await supabase.from("weekly_tasks").insert({
+          report_id: reportId,
+          employee_id: emp.id,
+          task_type: "planned",
+          task_text: newTaskText.trim(),
+          source: "meeting",
+          sort_order: (maxOrder?.sort_order ?? -1) + 1,
+        });
+      }
+
       setNewTaskText("");
       setNewTaskEmployee("");
       fetchData();
@@ -149,22 +207,69 @@ export default function MeetingDetail() {
 
     let text = `Meeting Minutes - ${meeting!.title}\nDate: ${dateStr}\n\n`;
 
-    employeeGroups.forEach((group) => {
-      const empTasks = group.tasks.filter((t) => t.source === "employee");
-      const adminTasks = group.tasks.filter((t) => t.source === "admin");
+    // Meeting Agenda section
+    if (meeting!.agenda_content) {
+      text += `--- Meeting Agenda ---\n\n${meeting!.agenda_content}\n\n`;
+    }
 
-      text += `${group.employee.full_name} (${group.employee.employee_code})\n`;
+    // Employee tasks section
+    const employeesWithTasks = employeeGroups.filter((g) => g.tasks.length > 0);
+    if (employeesWithTasks.length > 0) {
+      text += `--- Employee Tasks ---\n\n`;
+      employeeGroups.forEach((group) => {
+        if (group.tasks.length === 0) return;
+        const empTasks = group.tasks.filter((t) => t.source === "employee");
+        const adminTasks = group.tasks.filter((t) => t.source === "admin");
 
-      if (empTasks.length > 0) {
-        text += `  Tasks:\n`;
-        empTasks.forEach((t) => { text += `    - ${t.task_text}\n`; });
-      }
-      if (adminTasks.length > 0) {
-        text += `  Assigned by Admin:\n`;
-        adminTasks.forEach((t) => { text += `    - ${t.task_text}\n`; });
-      }
-      text += `\n`;
-    });
+        text += `${group.employee.full_name} (${group.employee.employee_code})\n`;
+
+        if (empTasks.length > 0) {
+          const completed = empTasks.filter((t) => t.is_checked);
+          const incomplete = empTasks.filter((t) => !t.is_checked);
+          if (completed.length > 0) {
+            text += `  Completed:\n`;
+            completed.forEach((t) => { text += `    ✓ ${t.task_text}\n`; });
+          }
+          if (incomplete.length > 0) {
+            text += `  Incomplete:\n`;
+            incomplete.forEach((t) => { text += `    ○ ${t.task_text}\n`; });
+          }
+        }
+        if (adminTasks.length > 0) {
+          const completed = adminTasks.filter((t) => t.is_checked);
+          const incomplete = adminTasks.filter((t) => !t.is_checked);
+          if (completed.length > 0) {
+            text += `  Assigned by Admin (Completed):\n`;
+            completed.forEach((t) => { text += `    ✓ ${t.task_text}\n`; });
+          }
+          if (incomplete.length > 0) {
+            text += `  Assigned by Admin (Incomplete):\n`;
+            incomplete.forEach((t) => { text += `    ○ ${t.task_text}\n`; });
+          }
+        }
+        text += `\n`;
+      });
+    }
+
+    // Discussion & Decisions section from department notes
+    const notesWithContent = departmentNotes.filter(
+      (n) => (n.discussion && n.discussion.trim()) || (n.decisions && n.decisions.trim())
+    );
+    if (notesWithContent.length > 0) {
+      text += `--- Discussion & Decisions ---\n\n`;
+      notesWithContent.forEach((note) => {
+        const empName = (note as any).employees?.full_name || "Unknown";
+        const empCode = (note as any).employees?.employee_code || "";
+        text += `${empName} (${empCode})\n`;
+        if (note.discussion && note.discussion.trim()) {
+          text += `  Discussion:\n    ${note.discussion.trim().replace(/\n/g, "\n    ")}\n`;
+        }
+        if (note.decisions && note.decisions.trim()) {
+          text += `  Decisions:\n    ${note.decisions.trim().replace(/\n/g, "\n    ")}\n`;
+        }
+        text += `\n`;
+      });
+    }
 
     setOverallMinutes(text);
     toast.success("Minutes generated");
@@ -283,6 +388,20 @@ export default function MeetingDetail() {
     }
   };
 
+  const deleteMeeting = async () => {
+    if (!id) return;
+    setIsDeleting(true);
+    const { error } = await supabase.from("meetings").delete().eq("id", id);
+    setIsDeleting(false);
+    setShowDeleteConfirm(false);
+    if (!error) {
+      toast.success("Meeting deleted");
+      navigate("/admin/meetings");
+    } else {
+      toast.error("Failed to delete meeting");
+    }
+  };
+
   if (!meeting) {
     return (
       <PageLayout title="Meeting">
@@ -311,6 +430,15 @@ export default function MeetingDetail() {
           <Button variant="outline" size="sm" onClick={() => navigate("/admin/meetings")}>
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-red-500 hover:text-red-600 hover:bg-red-50"
+            onClick={() => setShowDeleteConfirm(true)}
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            Delete
           </Button>
           {meeting.status === "draft" && (
             <Button size="sm" onClick={() => setShowPublishConfirm(true)} className="gap-1" disabled={isPublishing}>
@@ -385,7 +513,7 @@ export default function MeetingDetail() {
                   {group.tasks.map((task) => (
                     <div key={task.id} className="flex items-center gap-3 p-2 rounded border">
                       <Checkbox checked={task.is_checked} disabled />
-                      <span className="flex-1 text-sm">{task.task_text}</span>
+                      <span className={`flex-1 text-sm ${task.is_checked ? "line-through text-muted-foreground" : ""}`}>{task.task_text}</span>
                       <Badge variant={task.source === "admin" ? "secondary" : "outline"} className="text-xs">
                         {task.source === "admin" ? "Admin" : "Employee"}
                       </Badge>
@@ -418,6 +546,51 @@ export default function MeetingDetail() {
               <p className="text-sm text-muted-foreground">
                 No employee tasks yet. Employees will add their checklists in the meeting.
               </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Employee Discussion & Decisions */}
+        {departmentNotes.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Employee Discussion & Decisions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {departmentNotes.map((note) => {
+                const empName = (note as any).employees?.full_name || "Unknown";
+                const empCode = (note as any).employees?.employee_code || "";
+                const hasContent = (note.discussion && note.discussion.trim()) || (note.decisions && note.decisions.trim());
+                if (!hasContent) return null;
+                return (
+                  <div key={note.id} className="border rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">
+                        {empName}
+                        <span className="text-xs text-muted-foreground font-normal ml-2">{empCode}</span>
+                      </p>
+                      {note.status === "submitted" && (
+                        <Badge variant="default" className="gap-1 text-xs">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Submitted
+                        </Badge>
+                      )}
+                    </div>
+                    {note.discussion && note.discussion.trim() && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Discussion</p>
+                        <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2 rounded">{note.discussion}</p>
+                      </div>
+                    )}
+                    {note.decisions && note.decisions.trim() && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Decisions</p>
+                        <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2 rounded">{note.decisions}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
         )}
@@ -509,6 +682,16 @@ export default function MeetingDetail() {
         description="This will publish the meeting and add all tasks to employee weekly checklists. Continue?"
         confirmLabel="Publish"
         onConfirm={publishMeeting}
+      />
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        title="Delete Meeting"
+        description="Are you sure you want to delete this meeting? All tasks, notes, and minutes will be permanently removed. This action cannot be undone."
+        confirmLabel={isDeleting ? "Deleting..." : "Delete"}
+        variant="destructive"
+        onConfirm={deleteMeeting}
       />
     </PageLayout>
   );

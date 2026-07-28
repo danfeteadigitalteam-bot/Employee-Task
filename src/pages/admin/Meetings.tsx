@@ -4,7 +4,8 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { Eye, Plus, Calendar } from "lucide-react";
+import { Eye, Plus, Calendar, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { useNavigate } from "react-router-dom";
 import { useWeek } from "@/hooks/useWeek";
 import {
@@ -33,6 +34,7 @@ export default function AdminMeetings() {
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [newTitle, setNewTitle] = useState("Weekly Meeting");
   const [newDate, setNewDate] = useState(new Date().toISOString().split("T")[0]);
+  const [deleteTarget, setDeleteTarget] = useState<MeetingWithStats | null>(null);
 
   useEffect(() => {
     const fetchMeetings = async () => {
@@ -100,6 +102,16 @@ export default function AdminMeetings() {
     }
   };
 
+  const deleteMeeting = async () => {
+    if (!deleteTarget) return;
+    const { error } = await supabase.from("meetings").delete().eq("id", deleteTarget.id);
+    if (!error) {
+      setMeetings((prev) => prev.filter((m) => m.id !== deleteTarget.id));
+      toast.success("Meeting deleted");
+    }
+    setDeleteTarget(null);
+  };
+
   return (
     <PageLayout
       title="Meeting Minutes"
@@ -150,6 +162,17 @@ export default function AdminMeetings() {
                     <Button size="sm" variant="ghost">
                       <Eye className="h-4 w-4" />
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTarget(meeting);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -157,6 +180,17 @@ export default function AdminMeetings() {
           ))}
         </div>
       )}
+
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Delete Meeting"
+        description={`Are you sure you want to delete "${deleteTarget?.title}"? This will also remove all associated tasks and notes. This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={deleteMeeting}
+      />
 
       {/* New Meeting Dialog */}
       <Dialog open={showNewDialog} onOpenChange={setShowNewDialog}>

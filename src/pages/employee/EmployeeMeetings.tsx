@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BookOpen, Plus, Trash2, Send, CheckCircle2, Clock } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -23,6 +24,9 @@ export default function EmployeeMeetings() {
   const [newTaskText, setNewTaskText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [myNoteId, setMyNoteId] = useState<string | null>(null);
+  const [discussion, setDiscussion] = useState("");
+  const [decisions, setDecisions] = useState("");
 
   useEffect(() => {
     if (!employee) return;
@@ -75,6 +79,28 @@ export default function EmployeeMeetings() {
       .order("created_at");
 
     setAdminTasks((adminTasksData as MeetingTask[]) || []);
+
+    // Fetch my discussion/decisions note for this meeting
+    const { data: myNote } = await supabase
+      .from("meeting_department_notes")
+      .select("*")
+      .eq("meeting_id", meeting.id)
+      .eq("employee_id", employee.id)
+      .single();
+
+    if (myNote) {
+      setMyNoteId(myNote.id);
+      setDiscussion(myNote.discussion || "");
+      setDecisions(myNote.decisions || "");
+      // If note is submitted, mark as submitted
+      if (myNote.status === "submitted") {
+        setHasSubmitted(true);
+      }
+    } else {
+      setMyNoteId(null);
+      setDiscussion("");
+      setDecisions("");
+    }
   };
 
   const addTask = async () => {
@@ -107,25 +133,65 @@ export default function EmployeeMeetings() {
     }
   };
 
+  const toggleTask = async (task: MeetingTask) => {
+    const newChecked = !task.is_checked;
+    await supabase.from("meeting_tasks").update({ is_checked: newChecked }).eq("id", task.id);
+    setMyTasks(myTasks.map((t) => (t.id === task.id ? { ...t, is_checked: newChecked } : t)));
+  };
+
+  const toggleAdminTask = async (task: MeetingTask) => {
+    const newChecked = !task.is_checked;
+    await supabase.from("meeting_tasks").update({ is_checked: newChecked }).eq("id", task.id);
+    setAdminTasks(adminTasks.map((t) => (t.id === task.id ? { ...t, is_checked: newChecked } : t)));
+  };
+
   const deleteTask = async (taskId: string) => {
     await supabase.from("meeting_tasks").delete().eq("id", taskId);
     setMyTasks(myTasks.filter((t) => t.id !== taskId));
   };
 
   const submitTasks = async () => {
-    if (!employee || myTasks.length === 0) return;
+    if (!employee || !selectedMeeting) return;
     setIsSubmitting(true);
+
+    // Save discussion/decisions to meeting_department_notes
+    if (myNoteId) {
+      await supabase
+        .from("meeting_department_notes")
+        .update({
+          discussion: discussion.trim(),
+          decisions: decisions.trim(),
+          status: "submitted",
+          submitted_at: new Date().toISOString(),
+        })
+        .eq("id", myNoteId);
+    } else if (discussion.trim() || decisions.trim()) {
+      const { data: newNote } = await supabase
+        .from("meeting_department_notes")
+        .insert({
+          meeting_id: selectedMeeting.id,
+          employee_id: employee.id,
+          department_id: employee.department_id,
+          discussion: discussion.trim(),
+          decisions: decisions.trim(),
+          status: "submitted",
+          submitted_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+      if (newNote) setMyNoteId(newNote.id);
+    }
 
     // Mark all my tasks as submitted
     await supabase
       .from("meeting_tasks")
       .update({ status: "submitted" })
-      .eq("meeting_id", selectedMeeting!.id)
+      .eq("meeting_id", selectedMeeting.id)
       .eq("employee_id", employee.id)
       .eq("source", "employee")
       .eq("status", "draft");
 
-    // Copy tasks to weekly_tasks
+    // Copy tasks to weekly_tasks based on checked status
     for (const task of myTasks) {
       const { data: existing } = await supabase
         .from("weekly_tasks")
@@ -177,7 +243,7 @@ export default function EmployeeMeetings() {
           await supabase.from("weekly_tasks").insert({
             report_id: reportId,
             employee_id: employee.id,
-            task_type: "planned",
+            task_type: task.is_checked ? "completed" : "planned",
             task_text: task.task_text,
             source: "meeting",
             sort_order: (maxOrder?.sort_order ?? -1) + 1,
@@ -236,7 +302,14 @@ export default function EmployeeMeetings() {
       )}
 
       {/* Meeting Detail Dialog */}
-      <Dialog open={!!selectedMeeting} onOpenChange={() => setSelectedMeeting(null)}>
+      <Dialog open={!!selectedMeeting} onOpenChange={(open) => {
+        if (!open) {
+          setSelectedMeeting(null);
+          setDiscussion("");
+          setDecisions("");
+          setMyNoteId(null);
+        }
+      }}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{selectedMeeting?.title}</DialogTitle>
@@ -288,8 +361,12 @@ export default function EmployeeMeetings() {
                       <div className="space-y-2">
                         {adminTasks.map((task) => (
                           <div key={task.id} className="flex items-center gap-2 text-sm">
-                            <Checkbox checked={task.is_checked} disabled />
-                            <span>{task.task_text}</span>
+                            <Checkbox
+                              checked={task.is_checked}
+                              onCheckedChange={() => toggleAdminTask(task)}
+                              disabled={hasSubmitted}
+                            />
+                            <span className={`flex-1 ${task.is_checked ? "line-through text-muted-foreground" : ""}`}>{task.task_text}</span>
                             <span className="text-xs text-muted-foreground ml-auto">
                               Week of {task.assigned_week_start}
                             </span>
@@ -299,6 +376,43 @@ export default function EmployeeMeetings() {
                     </CardContent>
                   </Card>
                 )}
+
+                {/* Discussion & Decisions */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base">Discussion & Decisions</CardTitle>
+                      {hasSubmitted && (
+                        <Badge variant="default" className="gap-1">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Submitted
+                        </Badge>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">What was discussed in the meeting?</label>
+                      <Textarea
+                        placeholder="Write down what was discussed..."
+                        value={discussion}
+                        onChange={(e) => setDiscussion(e.target.value)}
+                        rows={3}
+                        disabled={hasSubmitted}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">What decisions were made?</label>
+                      <Textarea
+                        placeholder="Write down any decisions..."
+                        value={decisions}
+                        onChange={(e) => setDecisions(e.target.value)}
+                        rows={3}
+                        disabled={hasSubmitted}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
 
                 {/* Employee's own tasks */}
                 <Card>
@@ -324,8 +438,12 @@ export default function EmployeeMeetings() {
                       <div className="space-y-2">
                         {myTasks.map((task) => (
                           <div key={task.id} className="flex items-center gap-2 text-sm">
-                            <Checkbox checked={task.is_checked} disabled />
-                            <span className="flex-1">{task.task_text}</span>
+                            <Checkbox
+                              checked={task.is_checked}
+                              onCheckedChange={() => toggleTask(task)}
+                              disabled={hasSubmitted}
+                            />
+                            <span className={`flex-1 ${task.is_checked ? "line-through text-muted-foreground" : ""}`}>{task.task_text}</span>
                             <span className="text-xs text-muted-foreground">
                               Week of {task.assigned_week_start}
                             </span>
@@ -364,10 +482,10 @@ export default function EmployeeMeetings() {
                       </div>
                     )}
 
-                    {!hasSubmitted && myTasks.length > 0 && (
+                    {!hasSubmitted && (myTasks.length > 0 || discussion.trim() || decisions.trim()) && (
                       <Button onClick={submitTasks} disabled={isSubmitting} className="gap-2">
                         <Send className="h-4 w-4" />
-                        {isSubmitting ? "Submitting..." : "Submit Tasks"}
+                        {isSubmitting ? "Submitting..." : "Submit"}
                       </Button>
                     )}
                   </CardContent>
