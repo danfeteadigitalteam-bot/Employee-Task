@@ -2,20 +2,31 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { Toaster } from "@/components/ui/sonner";
-import LoginPage from "@/pages/LoginPage";
-import EmployeeDashboard from "@/pages/employee/Dashboard";
-import WeeklyReportPage from "@/pages/employee/WeeklyReport";
-import PreviousReports from "@/pages/employee/PreviousReports";
-import EmployeeMeetings from "@/pages/employee/EmployeeMeetings";
-import EmployeeProfile from "@/pages/employee/Profile";
-import AdminDashboard from "@/pages/admin/Dashboard";
-import AdminEmployees from "@/pages/admin/Employees";
-import AdminDepartments from "@/pages/admin/Departments";
-import AdminReports from "@/pages/admin/Reports";
-import AdminAgenda from "@/pages/admin/Agenda";
-import AdminMeetings from "@/pages/admin/Meetings";
-import MeetingDetail from "@/pages/admin/MeetingDetail";
+import { lazy, Suspense } from "react";
 import type { ReactNode } from "react";
+
+// Lazy load page components for code splitting
+const LoginPage = lazy(() => import("@/pages/LoginPage"));
+const EmployeeDashboard = lazy(() => import("@/pages/employee/Dashboard"));
+const WeeklyReportPage = lazy(() => import("@/pages/employee/WeeklyReport"));
+const PreviousReports = lazy(() => import("@/pages/employee/PreviousReports"));
+const EmployeeMeetings = lazy(() => import("@/pages/employee/EmployeeMeetings"));
+const EmployeeProfile = lazy(() => import("@/pages/employee/Profile"));
+const AdminDashboard = lazy(() => import("@/pages/admin/Dashboard"));
+const AdminEmployees = lazy(() => import("@/pages/admin/Employees"));
+const AdminDepartments = lazy(() => import("@/pages/admin/Departments"));
+const AdminReports = lazy(() => import("@/pages/admin/Reports"));
+const AdminAgenda = lazy(() => import("@/pages/admin/Agenda"));
+const AdminMeetings = lazy(() => import("@/pages/admin/Meetings"));
+const MeetingDetail = lazy(() => import("@/pages/admin/MeetingDetail"));
+
+function PageLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <p className="text-sm text-muted-foreground">Loading...</p>
+    </div>
+  );
+}
 
 const queryClient = new QueryClient();
 
@@ -63,6 +74,7 @@ function PublicRoute({ children }: { children: ReactNode }) {
 
 function AppRoutes() {
   return (
+    <Suspense fallback={<PageLoader />}>
     <Routes>
       {/* Public */}
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
@@ -86,6 +98,7 @@ function AppRoutes() {
       {/* Default redirect */}
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 

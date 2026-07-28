@@ -18,7 +18,9 @@ export default function EmployeeMeetings() {
   const { employee } = useAuth();
   const week = useWeek();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
+  const [dialogLoading, setDialogLoading] = useState(false);
   const [myTasks, setMyTasks] = useState<MeetingTask[]>([]);
   const [adminTasks, setAdminTasks] = useState<MeetingTask[]>([]);
   const [newTaskText, setNewTaskText] = useState("");
@@ -30,77 +32,79 @@ export default function EmployeeMeetings() {
 
   useEffect(() => {
     if (!employee) return;
-
+    let cancelled = false;
     const fetchMeetings = async () => {
+      setLoading(true);
       const { data } = await supabase
         .from("meetings")
         .select("*")
         .order("meeting_date", { ascending: false });
-
-      if (data) setMeetings(data as Meeting[]);
+      if (!cancelled) {
+        if (data) setMeetings(data as Meeting[]);
+        setLoading(false);
+      }
     };
-
     fetchMeetings();
+    return () => { cancelled = true; };
   }, [employee]);
 
   const openMeeting = async (meeting: Meeting) => {
     if (!employee) return;
     setSelectedMeeting(meeting);
+    setDialogLoading(true);
+    // Reset stale state immediately
+    setMyTasks([]);
+    setAdminTasks([]);
+    setHasSubmitted(false);
+    setMyNoteId(null);
+    setDiscussion("");
+    setDecisions("");
 
-    // Fetch my tasks for this meeting
-    const { data: myTasksData, error: myTasksError } = await supabase
-      .from("meeting_tasks")
-      .select("*")
-      .eq("meeting_id", meeting.id)
-      .eq("employee_id", employee.id)
-      .eq("source", "employee")
-      .order("created_at");
+    // Parallelize all three independent queries
+    const [myTasksRes, adminTasksRes, noteRes] = await Promise.all([
+      supabase
+        .from("meeting_tasks")
+        .select("*")
+        .eq("meeting_id", meeting.id)
+        .eq("employee_id", employee.id)
+        .eq("source", "employee")
+        .order("created_at"),
+      supabase
+        .from("meeting_tasks")
+        .select("*")
+        .eq("meeting_id", meeting.id)
+        .eq("employee_id", employee.id)
+        .eq("source", "admin")
+        .order("created_at"),
+      supabase
+        .from("meeting_department_notes")
+        .select("*")
+        .eq("meeting_id", meeting.id)
+        .eq("employee_id", employee.id)
+        .single(),
+    ]);
 
-    if (myTasksError) {
-      console.error("Fetch tasks error:", myTasksError);
-      toast.error("Failed to load tasks: " + myTasksError.message);
-      setMyTasks([]);
-      setHasSubmitted(false);
-    } else if (myTasksData) {
-      setMyTasks(myTasksData as MeetingTask[]);
-      setHasSubmitted(myTasksData.some((t) => t.status === "submitted"));
-    } else {
-      setMyTasks([]);
-      setHasSubmitted(false);
+    // Process my tasks
+    if (myTasksRes.error) {
+      toast.error("Failed to load tasks");
+    } else if (myTasksRes.data) {
+      setMyTasks(myTasksRes.data as MeetingTask[]);
+      setHasSubmitted(myTasksRes.data.some((t: any) => t.status === "submitted"));
     }
 
-    // Fetch admin-assigned tasks for this employee
-    const { data: adminTasksData } = await supabase
-      .from("meeting_tasks")
-      .select("*")
-      .eq("meeting_id", meeting.id)
-      .eq("employee_id", employee.id)
-      .eq("source", "admin")
-      .order("created_at");
+    // Process admin tasks
+    setAdminTasks((adminTasksRes.data as MeetingTask[]) || []);
 
-    setAdminTasks((adminTasksData as MeetingTask[]) || []);
-
-    // Fetch my discussion/decisions note for this meeting
-    const { data: myNote } = await supabase
-      .from("meeting_department_notes")
-      .select("*")
-      .eq("meeting_id", meeting.id)
-      .eq("employee_id", employee.id)
-      .single();
-
+    // Process notes
+    const myNote = noteRes.data;
     if (myNote) {
       setMyNoteId(myNote.id);
       setDiscussion(myNote.discussion || "");
       setDecisions(myNote.decisions || "");
-      // If note is submitted, mark as submitted
-      if (myNote.status === "submitted") {
-        setHasSubmitted(true);
-      }
-    } else {
-      setMyNoteId(null);
-      setDiscussion("");
-      setDecisions("");
+      if (myNote.status === "submitted") setHasSubmitted(true);
     }
+
+    setDialogLoading(false);
   };
 
   const addTask = async () => {
@@ -191,64 +195,67 @@ export default function EmployeeMeetings() {
       .eq("source", "employee")
       .eq("status", "draft");
 
-    // Copy tasks to weekly_tasks based on checked status
-    for (const task of myTasks) {
-      const { data: existing } = await supabase
-        .from("weekly_tasks")
-        .select("id")
-        .eq("employee_id", employee.id)
-        .eq("task_text", task.task_text)
-        .eq("source", "meeting")
-        .single();
+    // Find or create report once (not per task)
+    let reportId: string | null = null;
+    const { data: existingReport } = await supabase
+      .from("weekly_reports")
+      .select("id")
+      .eq("employee_id", employee.id)
+      .eq("week_start", week.weekStartStr)
+      .single();
 
-      if (!existing) {
-        // Find or create report for the assigned week
-        const { data: existingReport } = await supabase
-          .from("weekly_reports")
-          .select("id")
-          .eq("employee_id", employee.id)
-          .eq("week_start", task.assigned_week_start)
+    if (existingReport) {
+      reportId = existingReport.id;
+    } else {
+      const weekEnd = new Date(week.weekStartStr);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      const { data: newReport } = await supabase
+        .from("weekly_reports")
+        .insert({
+          employee_id: employee.id,
+          department_id: employee.department_id,
+          week_start: week.weekStartStr,
+          week_end: weekEnd.toISOString().split("T")[0],
+          status: "draft",
+        })
+        .select("id")
+        .single();
+      reportId = newReport?.id || null;
+    }
+
+    // Batch insert all tasks in one query
+    if (reportId && myTasks.length > 0) {
+      // Filter out tasks already in weekly_tasks
+      const { data: existingTasks } = await supabase
+        .from("weekly_tasks")
+        .select("task_text")
+        .eq("employee_id", employee.id)
+        .eq("source", "meeting");
+
+      const existingTexts = new Set((existingTasks || []).map((t: any) => t.task_text));
+      const newTasks = myTasks.filter((t) => !existingTexts.has(t.task_text));
+
+      if (newTasks.length > 0) {
+        const { data: maxOrderRow } = await supabase
+          .from("weekly_tasks")
+          .select("sort_order")
+          .eq("report_id", reportId)
+          .order("sort_order", { ascending: false })
+          .limit(1)
           .single();
 
-        let reportId = existingReport?.id;
+        let sortBase = (maxOrderRow?.sort_order ?? -1) + 1;
 
-        if (!reportId) {
-          const weekEnd = new Date(task.assigned_week_start);
-          weekEnd.setDate(weekEnd.getDate() + 6);
-
-          const { data: newReport } = await supabase
-            .from("weekly_reports")
-            .insert({
-              employee_id: employee.id,
-              department_id: employee.department_id,
-              week_start: task.assigned_week_start,
-              week_end: weekEnd.toISOString().split("T")[0],
-              status: "draft",
-            })
-            .select("id")
-            .single();
-
-          reportId = newReport?.id;
-        }
-
-        if (reportId) {
-          const { data: maxOrder } = await supabase
-            .from("weekly_tasks")
-            .select("sort_order")
-            .eq("report_id", reportId)
-            .order("sort_order", { ascending: false })
-            .limit(1)
-            .single();
-
-          await supabase.from("weekly_tasks").insert({
+        await supabase.from("weekly_tasks").insert(
+          newTasks.map((task, i) => ({
             report_id: reportId,
             employee_id: employee.id,
             task_type: task.is_checked ? "completed" : "planned",
             task_text: task.task_text,
             source: "meeting",
-            sort_order: (maxOrder?.sort_order ?? -1) + 1,
-          });
-        }
+            sort_order: sortBase + i,
+          }))
+        );
       }
     }
 
@@ -305,9 +312,13 @@ export default function EmployeeMeetings() {
       <Dialog open={!!selectedMeeting} onOpenChange={(open) => {
         if (!open) {
           setSelectedMeeting(null);
+          setMyTasks([]);
+          setAdminTasks([]);
+          setHasSubmitted(false);
+          setMyNoteId(null);
           setDiscussion("");
           setDecisions("");
-          setMyNoteId(null);
+          setNewTaskText("");
         }
       }}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
@@ -324,6 +335,9 @@ export default function EmployeeMeetings() {
           </DialogHeader>
 
           <div className="space-y-6">
+            {dialogLoading ? (
+              <p className="text-sm text-muted-foreground text-center py-8">Loading meeting data...</p>
+            ) : (<>
             {/* Meeting Agenda */}
             {selectedMeeting?.agenda_content && (
               <div>
@@ -492,6 +506,7 @@ export default function EmployeeMeetings() {
                 </Card>
               </>
             )}
+            </>)}
           </div>
         </DialogContent>
       </Dialog>

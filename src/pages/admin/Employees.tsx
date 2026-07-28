@@ -51,15 +51,12 @@ export default function AdminEmployees() {
   const [resetPinValue, setResetPinValue] = useState("");
 
   const fetchData = useCallback(async () => {
-    const { data: depts } = await supabase.from("departments").select("*").order("name");
-    if (depts) setDepartments(depts as Department[]);
-
-    const { data: emps } = await supabase
-      .from("employees")
-      .select("*, departments(name)")
-      .order("employee_code");
-
-    if (emps) setEmployees(emps as EmployeeWithDept[]);
+    const [deptsRes, empsRes] = await Promise.all([
+      supabase.from("departments").select("*").order("name"),
+      supabase.from("employees").select("*, departments(name)").order("employee_code"),
+    ]);
+    if (deptsRes.data) setDepartments(deptsRes.data as Department[]);
+    if (empsRes.data) setEmployees(empsRes.data as EmployeeWithDept[]);
   }, []);
 
   useEffect(() => {

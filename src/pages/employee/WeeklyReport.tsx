@@ -79,17 +79,20 @@ export default function WeeklyReportPage() {
       }
     }
     setLoading(false);
+    setNotesLoaded(true);
   }, [employee, week.weekStartStr, week.weekEndStr]);
 
   useEffect(() => {
     fetchReport();
   }, [fetchReport]);
 
-  // Autosave notes
+  // Autosave notes - skip initial mount
+  const [notesLoaded, setNotesLoaded] = useState(false);
+
   const saveNotes = useCallback(async () => {
-    if (!report || isReadOnly) return;
+    if (!report || isReadOnly || !notesLoaded) return;
     await supabase.from("weekly_reports").update({ notes }).eq("id", report.id);
-  }, [report, notes, isReadOnly]);
+  }, [report, notes, isReadOnly, notesLoaded]);
 
   useEffect(() => {
     const timer = setTimeout(saveNotes, 1000);

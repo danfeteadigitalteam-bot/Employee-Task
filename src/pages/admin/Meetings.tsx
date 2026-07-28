@@ -31,49 +31,57 @@ export default function AdminMeetings() {
   const navigate = useNavigate();
   const week = useWeek();
   const [meetings, setMeetings] = useState<MeetingWithStats[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [newTitle, setNewTitle] = useState("Weekly Meeting");
   const [newDate, setNewDate] = useState(new Date().toISOString().split("T")[0]);
   const [deleteTarget, setDeleteTarget] = useState<MeetingWithStats | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     const fetchMeetings = async () => {
-      const { data } = await supabase
-        .from("meetings")
-        .select("*")
-        .order("meeting_date", { ascending: false });
+      setLoading(true);
+      // Parallelize independent queries
+      const [meetingsRes, empCountRes] = await Promise.all([
+        supabase.from("meetings").select("*").order("meeting_date", { ascending: false }),
+        supabase.from("employees").select("*", { count: "exact", head: true }).eq("is_active", true).neq("role", "admin"),
+      ]);
 
-      if (!data) return;
+      if (cancelled) return;
+      const data = meetingsRes.data;
+      if (!data) { setLoading(false); return; }
 
-      // Get employee count
-      const { count: empCount } = await supabase
-        .from("employees")
-        .select("*", { count: "exact", head: true })
-        .eq("is_active", true)
-        .neq("role", "admin");
+      const empCount = empCountRes.count || 0;
 
-      // Get task counts per meeting
-      const meetingsWithStats: MeetingWithStats[] = await Promise.all(
-        data.map(async (meeting) => {
-          const { count: submitted } = await supabase
-            .from("meeting_tasks")
-            .select("*", { count: "exact", head: true })
-            .eq("meeting_id", meeting.id)
-            .eq("source", "employee")
-            .eq("status", "submitted");
+      // Fetch all submitted counts in one query instead of N+1
+      const { data: submittedData } = await supabase
+        .from("meeting_tasks")
+        .select("meeting_id")
+        .eq("source", "employee")
+        .eq("status", "submitted");
 
-          return {
-            ...meeting,
-            total_employees: empCount || 0,
-            submitted_count: submitted || 0,
-          };
-        })
+      if (cancelled) return;
+
+      // Count submitted per meeting in memory
+      const submittedMap = new Map<string, number>();
+      if (submittedData) {
+        for (const row of submittedData) {
+          submittedMap.set(row.meeting_id, (submittedMap.get(row.meeting_id) || 0) + 1);
+        }
+      }
+
+      setMeetings(
+        data.map((meeting) => ({
+          ...meeting,
+          total_employees: empCount,
+          submitted_count: submittedMap.get(meeting.id) || 0,
+        }))
       );
-
-      setMeetings(meetingsWithStats);
+      setLoading(false);
     };
 
     fetchMeetings();
+    return () => { cancelled = true; };
   }, []);
 
   const createNewMeeting = async () => {
@@ -123,7 +131,13 @@ export default function AdminMeetings() {
         </Button>
       }
     >
-      {meetings.length === 0 ? (
+      {loading ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-sm text-muted-foreground">Loading meetings...</p>
+          </CardContent>
+        </Card>
+      ) : meetings.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <Calendar className="h-8 w-8 text-muted-foreground mx-auto mb-3" />

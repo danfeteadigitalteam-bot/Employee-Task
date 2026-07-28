@@ -51,6 +51,7 @@ export default function MeetingDetail() {
   const fetchData = useCallback(async () => {
     if (!id) return;
 
+    // First: get the meeting
     const { data: meetingData } = await supabase
       .from("meetings")
       .select("*")
@@ -61,58 +62,46 @@ export default function MeetingDetail() {
     setMeeting(meetingData as Meeting);
     setOverallMinutes(meetingData.overall_minutes || "");
 
-    // Fetch all tasks for this meeting
-    const { data: tasks } = await supabase
-      .from("meeting_tasks")
-      .select("*, employees(full_name, employee_code, department_id), departments(name)")
-      .eq("meeting_id", id)
-      .order("created_at");
+    // Parallelize all independent queries
+    const [tasksRes, notesRes, empsRes] = await Promise.all([
+      supabase
+        .from("meeting_tasks")
+        .select("*, employees(full_name, employee_code, department_id), departments(name)")
+        .eq("meeting_id", id)
+        .order("created_at"),
+      supabase
+        .from("meeting_department_notes")
+        .select("*, employees(full_name, employee_code), departments(name)")
+        .eq("meeting_id", id)
+        .order("created_at"),
+      supabase
+        .from("employees")
+        .select("*, departments(name)")
+        .eq("is_active", true)
+        .neq("role", "admin")
+        .order("full_name"),
+    ]);
 
-    // Group tasks by employee
+    // Process tasks
     const empMap = new Map<string, EmployeeTasks>();
-
-    if (tasks) {
-      for (const task of tasks as any[]) {
+    if (tasksRes.data) {
+      for (const task of tasksRes.data as any[]) {
         const empId = task.employee_id;
         if (!empMap.has(empId)) {
-          empMap.set(empId, {
-            employee: task.employees,
-            tasks: [],
-            submitted: false,
-          });
+          empMap.set(empId, { employee: task.employees, tasks: [], submitted: false });
         }
         empMap.get(empId)!.tasks.push(task);
       }
     }
-
-    // Check submission status per employee
     for (const [, group] of empMap) {
-      const hasSubmitted = group.tasks.some((t) => t.source === "employee" && t.status === "submitted");
-      group.submitted = hasSubmitted;
+      group.submitted = group.tasks.some((t) => t.source === "employee" && t.status === "submitted");
     }
-
     setEmployeeGroups(Array.from(empMap.values()).sort((a, b) =>
       a.employee.full_name.localeCompare(b.employee.full_name)
     ));
 
-    // Fetch department notes (discussion/decisions from employees)
-    const { data: notes } = await supabase
-      .from("meeting_department_notes")
-      .select("*, employees(full_name, employee_code), departments(name)")
-      .eq("meeting_id", id)
-      .order("created_at");
-
-    if (notes) setDepartmentNotes(notes as any);
-
-    // Fetch all active employees
-    const { data: emps } = await supabase
-      .from("employees")
-      .select("*, departments(name)")
-      .eq("is_active", true)
-      .neq("role", "admin")
-      .order("full_name");
-
-    if (emps) setAllEmployees(emps as any);
+    if (notesRes.data) setDepartmentNotes(notesRes.data as any);
+    if (empsRes.data) setAllEmployees(empsRes.data as any);
   }, [id]);
 
   useEffect(() => {
@@ -305,10 +294,12 @@ export default function MeetingDetail() {
       tasksByEmployeeWeek.get(key)!.push(task);
     }
 
+    // Process each employee/week group
+    const insertPromises: Promise<any>[] = [];
     for (const [key, empTasks] of tasksByEmployeeWeek) {
       const [empId, weekStart] = key.split("::");
 
-      // Remove old meeting-sourced tasks for this employee/week from weekly_tasks
+      // Find existing report
       const { data: existingReport } = await supabase
         .from("weekly_reports")
         .select("id")
@@ -317,26 +308,18 @@ export default function MeetingDetail() {
         .single();
 
       if (existingReport) {
-        await supabase
-          .from("weekly_tasks")
-          .delete()
-          .eq("report_id", existingReport.id)
-          .eq("source", "meeting");
-
-        // Reset report status to draft so employee can edit
-        await supabase
-          .from("weekly_reports")
-          .update({ status: "draft", submitted_at: null })
-          .eq("id", existingReport.id);
+        // Parallel: delete old tasks + reset report status
+        await Promise.all([
+          supabase.from("weekly_tasks").delete().eq("report_id", existingReport.id).eq("source", "meeting"),
+          supabase.from("weekly_reports").update({ status: "draft", submitted_at: null }).eq("id", existingReport.id),
+        ]);
       }
 
-      // Find or create report
       let reportId = existingReport?.id;
 
       if (!reportId) {
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekEnd.getDate() + 6);
-
         const { data: newReport } = await supabase
           .from("weekly_reports")
           .insert({
@@ -348,25 +331,28 @@ export default function MeetingDetail() {
           })
           .select("id")
           .single();
-
         reportId = newReport?.id;
       }
 
       if (!reportId) continue;
 
-      // Insert all meeting tasks for this employee/week
-      for (let i = 0; i < empTasks.length; i++) {
-        const task = empTasks[i];
-        await supabase.from("weekly_tasks").insert({
-          report_id: reportId,
-          employee_id: task.employee_id,
-          task_type: "planned",
-          task_text: task.task_text,
-          source: "meeting",
-          sort_order: i,
-        });
-      }
+      // Batch insert all tasks for this employee/week in one query
+      insertPromises.push(
+        supabase.from("weekly_tasks").insert(
+          empTasks.map((task, i) => ({
+            report_id: reportId,
+            employee_id: task.employee_id,
+            task_type: "planned",
+            task_text: task.task_text,
+            source: "meeting",
+            sort_order: i,
+          }))
+        )
+      );
     }
+
+    // Execute all batch inserts in parallel
+    await Promise.all(insertPromises);
 
     const { error } = await supabase
       .from("meetings")

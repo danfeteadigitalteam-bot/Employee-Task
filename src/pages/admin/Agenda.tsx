@@ -163,14 +163,16 @@ export default function AdminAgenda() {
       .single();
 
     if (!error && data) {
-      // Save department notes
-      for (const dept of agenda) {
-        await supabase.from("meeting_department_notes").insert({
-          meeting_id: data.id,
-          department_id: dept.department_id,
-          discussion: "",
-          decisions: "",
-        });
+      // Batch insert department notes
+      if (agenda.length > 0) {
+        await supabase.from("meeting_department_notes").insert(
+          agenda.map((dept) => ({
+            meeting_id: data.id,
+            department_id: dept.department_id,
+            discussion: "",
+            decisions: "",
+          }))
+        );
       }
 
       toast.success("Meeting created. Go to Meeting Minutes to add discussions and tasks.");
