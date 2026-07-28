@@ -23,7 +23,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Pencil, RotateCcw, UserPlus } from "lucide-react";
+import { Pencil, RotateCcw, UserPlus, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { toast } from "sonner";
 import type { Employee, Department } from "@/types/database";
 
@@ -38,6 +39,7 @@ export default function AdminEmployees() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<EmployeeWithDept | null>(null);
   const [resetPinEmployee, setResetPinEmployee] = useState<EmployeeWithDept | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EmployeeWithDept | null>(null);
 
   // Form state
   const [formName, setFormName] = useState("");
@@ -198,6 +200,22 @@ export default function AdminEmployees() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    const { error } = await supabase.from("employees").delete().eq("id", deleteTarget.id);
+    if (!error) {
+      toast.success("Employee deleted");
+      setEmployees((prev) => prev.filter((e) => e.id !== deleteTarget.id));
+    } else {
+      if (error.code === "23503") {
+        toast.error("Cannot delete: employee has associated records (e.g. created meetings)");
+      } else {
+        toast.error("Failed to delete employee");
+      }
+    }
+    setDeleteTarget(null);
+  };
+
   const resetForm = () => {
     setFormName("");
     setFormCode("");
@@ -269,6 +287,14 @@ export default function AdminEmployees() {
                           onClick={() => handleToggleActive(emp)}
                         >
                           {emp.is_active ? "Deactivate" : "Activate"}
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                          onClick={() => setDeleteTarget(emp)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </td>
@@ -425,6 +451,17 @@ export default function AdminEmployees() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Employee Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Delete Employee"
+        description={`Are you sure you want to delete "${deleteTarget?.full_name}" (${deleteTarget?.employee_code})? This will also remove all their weekly reports, tasks, and meeting data. This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={handleDelete}
+      />
     </PageLayout>
   );
 }
