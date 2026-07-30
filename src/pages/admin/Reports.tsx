@@ -1,3 +1,4 @@
+//C:\Users\ACER\Desktop\NTE Loyalty\Employee Workspace\src\pages\admin\Reports.tsx
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
@@ -16,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Eye, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
+import { Eye, RotateCcw, ChevronLeft, ChevronRight, FileText, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { addWeeks, subWeeks } from "date-fns";
 import type { WeeklyReport, WeeklyTask, Employee, Department } from "@/types/database";
@@ -25,6 +26,15 @@ interface ReportWithEmployee extends WeeklyReport {
   employee?: Employee;
   departments?: { name: string };
   weekly_tasks?: WeeklyTask[];
+}
+
+function initialsOf(name: string) {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
 }
 
 export default function AdminReports() {
@@ -103,32 +113,34 @@ export default function AdminReports() {
     <PageLayout title="Reports" description={`Week of ${week.displayRange}`}>
       <div className="space-y-4">
         {/* Controls */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <Select value={selectedDept} onValueChange={(v) => setSelectedDept(v ?? "all")}>
-            <SelectTrigger className="w-full sm:w-48">
-              <SelectValue placeholder="All Departments" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Departments</SelectItem>
-              {departments.map((d) => (
-                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <Card>
+          <CardContent className="p-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+            <Select value={selectedDept} onValueChange={(v) => setSelectedDept(v ?? "all")}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue placeholder="All Departments" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Departments</SelectItem>
+                {departments.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={() => setWeekOffset((w) => w - 1)}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm font-medium min-w-[180px] text-center">{week.displayRange}</span>
-            <Button variant="outline" size="icon" onClick={() => setWeekOffset((w) => w + 1)} disabled={weekOffset >= 0}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-            {weekOffset !== 0 && (
-              <Button variant="ghost" size="sm" onClick={() => setWeekOffset(0)}>Current Week</Button>
-            )}
-          </div>
-        </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" onClick={() => setWeekOffset((w) => w - 1)}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm font-medium min-w-[180px] text-center">{week.displayRange}</span>
+              <Button variant="outline" size="icon" onClick={() => setWeekOffset((w) => w + 1)} disabled={weekOffset >= 0}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              {weekOffset !== 0 && (
+                <Button variant="ghost" size="sm" onClick={() => setWeekOffset(0)}>Current Week</Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Submitted Reports */}
         <Card>
@@ -137,27 +149,37 @@ export default function AdminReports() {
           </CardHeader>
           <CardContent>
             {reports.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No reports for this week.</p>
+              <div className="flex flex-col items-center justify-center text-center py-10">
+                <div className="p-3 bg-accent rounded-full mb-3">
+                  <FileText className="h-5 w-5 text-accent-foreground" />
+                </div>
+                <p className="text-sm font-medium">No reports for this week</p>
+              </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {reports.map((report) => (
-                  <div key={report.id} className="flex items-center justify-between p-3 rounded-lg border">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{(report as any).employees?.full_name}</p>
-                      <p className="text-xs text-muted-foreground">{(report as any).employees?.employee_code} · {(report as any).departments?.name}</p>
-                      {report.submitted_at && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Submitted {new Date(report.submitted_at).toLocaleDateString()}
-                        </p>
-                      )}
+                  <div key={report.id} className="flex items-center justify-between p-3.5 rounded-xl border border-border card-interactive">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="h-9 w-9 rounded-full bg-accent flex items-center justify-center text-xs font-semibold text-accent-foreground shrink-0">
+                        {initialsOf((report as any).employees?.full_name || "?")}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{(report as any).employees?.full_name}</p>
+                        <p className="text-xs text-muted-foreground">{(report as any).employees?.employee_code} · {(report as any).departments?.name}</p>
+                        {report.submitted_at && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Submitted {new Date(report.submitted_at).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 ml-4">
+                    <div className="flex items-center gap-2 ml-4 shrink-0">
                       <StatusBadge status={report.status} />
-                      <Button size="sm" variant="ghost" onClick={() => viewReport(report)}>
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => viewReport(report)}>
                         <Eye className="h-4 w-4" />
                       </Button>
                       {report.status === "submitted" && (
-                        <Button size="sm" variant="ghost" onClick={() => setReopeningReport(report)}>
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setReopeningReport(report)}>
                           <RotateCcw className="h-4 w-4" />
                         </Button>
                       )}
@@ -173,17 +195,25 @@ export default function AdminReports() {
         {missingEmployees.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base text-red-600">Not Submitted ({missingEmployees.length})</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2 text-red-600">
+                <AlertCircle className="h-4 w-4" />
+                Not Submitted ({missingEmployees.length})
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {missingEmployees.map((emp) => (
-                  <div key={emp.id} className="flex items-center justify-between p-2">
-                    <div>
-                      <p className="text-sm">{emp.full_name}</p>
-                      <p className="text-xs text-muted-foreground">{emp.employee_code}</p>
+                  <div key={emp.id} className="flex items-center justify-between py-2 px-1">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-red-50 flex items-center justify-center text-xs font-semibold text-red-600 shrink-0">
+                        {initialsOf(emp.full_name)}
+                      </div>
+                      <div>
+                        <p className="text-sm">{emp.full_name}</p>
+                        <p className="text-xs text-muted-foreground">{emp.employee_code}</p>
+                      </div>
                     </div>
-                    <Badge variant="outline" className="text-xs text-red-600">Pending</Badge>
+                    <Badge variant="outline" className="text-xs text-red-600 border-red-200 bg-red-50">Pending</Badge>
                   </div>
                 ))}
               </div>
@@ -201,19 +231,19 @@ export default function AdminReports() {
           </DialogHeader>
 
           {selectedReport && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">PLANNED TASKS</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2 tracking-wide uppercase">Planned Tasks</p>
                 {reportTasks.filter((t) => t.task_type === "planned").length === 0 ? (
                   <p className="text-sm text-muted-foreground">No tasks</p>
                 ) : (
-                  <ul className="space-y-1">
+                  <ul className="space-y-1.5 bg-muted/40 rounded-xl p-3 border border-border/70">
                     {reportTasks.filter((t) => t.task_type === "planned").map((task) => (
                       <li key={task.id} className="flex items-center gap-2 text-sm">
-                        <span className={task.is_checked ? "text-emerald-500" : "text-muted-foreground"}>
+                        <span className={task.is_checked ? "text-emerald-600" : "text-muted-foreground"}>
                           {task.is_checked ? "✓" : "○"}
                         </span>
-                        <span className={task.is_checked ? "line-through text-muted-foreground" : ""}>{task.task_text}</span>
+                        <span className={`flex-1 ${task.is_checked ? "line-through text-muted-foreground" : ""}`}>{task.task_text}</span>
                         {task.source === "meeting" && <Badge variant="secondary" className="text-xs">Meeting</Badge>}
                       </li>
                     ))}
@@ -222,14 +252,14 @@ export default function AdminReports() {
               </div>
 
               <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">COMPLETED WORK</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2 tracking-wide uppercase">Completed Work</p>
                 {reportTasks.filter((t) => t.task_type === "completed").length === 0 ? (
                   <p className="text-sm text-muted-foreground">No completed work</p>
                 ) : (
-                  <ul className="space-y-1">
+                  <ul className="space-y-1.5 bg-muted/40 rounded-xl p-3 border border-border/70">
                     {reportTasks.filter((t) => t.task_type === "completed").map((task) => (
                       <li key={task.id} className="flex items-center gap-2 text-sm">
-                        <span className={task.is_checked ? "text-emerald-500" : "text-muted-foreground"}>
+                        <span className={task.is_checked ? "text-emerald-600" : "text-muted-foreground"}>
                           {task.is_checked ? "✓" : "○"}
                         </span>
                         <span className={task.is_checked ? "line-through text-muted-foreground" : ""}>{task.task_text}</span>
@@ -241,8 +271,8 @@ export default function AdminReports() {
 
               {selectedReport.notes && (
                 <div>
-                  <p className="text-xs font-medium text-muted-foreground mb-2">NOTES</p>
-                  <p className="text-sm whitespace-pre-wrap bg-muted/50 p-3 rounded-lg">{selectedReport.notes}</p>
+                  <p className="text-xs font-medium text-muted-foreground mb-2 tracking-wide uppercase">Notes</p>
+                  <p className="text-sm whitespace-pre-wrap bg-muted/40 rounded-xl p-3 border border-border/70">{selectedReport.notes}</p>
                 </div>
               )}
             </div>

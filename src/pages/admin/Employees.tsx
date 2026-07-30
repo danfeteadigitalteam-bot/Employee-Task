@@ -1,3 +1,4 @@
+//C:\Users\ACER\Desktop\NTE Loyalty\Employee Workspace\src\pages\admin\Employees.tsx
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { EDGE_FUNCTION_BASE } from "@/lib/supabase";
@@ -23,13 +24,22 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Pencil, RotateCcw, UserPlus, Trash2 } from "lucide-react";
+import { Pencil, RotateCcw, UserPlus, Trash2, Users } from "lucide-react";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { toast } from "sonner";
 import type { Employee, Department } from "@/types/database";
 
 interface EmployeeWithDept extends Employee {
   departments?: { name: string };
+}
+
+function initialsOf(name: string) {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
 }
 
 export default function AdminEmployees() {
@@ -242,71 +252,79 @@ export default function AdminEmployees() {
     >
       <Card>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Employee</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Department</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Role</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Status</th>
-                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employees.map((emp) => (
-                  <tr key={emp.id} className="border-b last:border-b-0">
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="text-sm font-medium">{emp.full_name}</p>
-                        <p className="text-xs text-muted-foreground">{emp.employee_code}</p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm">{(emp as any).departments?.name || "—"}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant="outline" className="text-xs capitalize">{emp.role}</Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={emp.is_active ? "active" : "inactive"} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEditDialog(emp)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setResetPinEmployee(emp); setResetPinValue(""); }}>
-                          <RotateCcw className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={emp.is_active ? "ghost" : "outline"}
-                          className="h-8 text-xs"
-                          onClick={() => handleToggleActive(emp)}
-                        >
-                          {emp.is_active ? "Deactivate" : "Activate"}
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
-                          onClick={() => setDeleteTarget(emp)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </td>
+          {employees.length === 0 ? (
+            <div className="py-16 text-center">
+              <div className="inline-flex p-3 bg-accent rounded-full mb-3">
+                <Users className="h-5 w-5 text-accent-foreground" />
+              </div>
+              <p className="text-sm font-medium">No employees found</p>
+              <p className="text-sm text-muted-foreground mt-1">Add your first employee to get started.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border bg-muted/40">
+                    <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Employee</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Department</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Role</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Status</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Actions</th>
                   </tr>
-                ))}
-                {employees.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                      No employees found. Add your first employee.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {employees.map((emp) => (
+                    <tr key={emp.id} className="border-b border-border/70 last:border-b-0 hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-full bg-accent flex items-center justify-center text-xs font-semibold text-accent-foreground shrink-0">
+                            {initialsOf(emp.full_name)}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">{emp.full_name}</p>
+                            <p className="text-xs text-muted-foreground">{emp.employee_code}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground">{(emp as any).departments?.name || "—"}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant="outline" className="text-xs capitalize">{emp.role}</Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={emp.is_active ? "active" : "inactive"} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEditDialog(emp)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setResetPinEmployee(emp); setResetPinValue(""); }}>
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={emp.is_active ? "ghost" : "outline"}
+                            className="h-8 text-xs"
+                            onClick={() => handleToggleActive(emp)}
+                          >
+                            {emp.is_active ? "Deactivate" : "Activate"}
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                            onClick={() => setDeleteTarget(emp)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -360,6 +378,7 @@ export default function AdminEmployees() {
                 maxLength={6}
                 inputMode="numeric"
                 disabled={isSubmitting}
+                className="tracking-widest"
               />
             </div>
             <DialogFooter>
@@ -437,6 +456,7 @@ export default function AdminEmployees() {
                 placeholder="123456"
                 maxLength={6}
                 inputMode="numeric"
+                className="tracking-widest"
               />
             </div>
             <DialogFooter>

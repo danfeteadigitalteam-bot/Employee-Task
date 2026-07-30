@@ -1,10 +1,11 @@
+//C:\Users\ACER\Desktop\NTE Loyalty\Employee Workspace\src\pages\admin\Meetings.tsx
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { Eye, Plus, Calendar, Trash2 } from "lucide-react";
+import { Eye, Plus, Calendar, Trash2, CalendarDays, ChevronRight } from "lucide-react";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { useNavigate } from "react-router-dom";
 import { useWeek } from "@/hooks/useWeek";
@@ -132,17 +133,23 @@ export default function AdminMeetings() {
       }
     >
       {loading ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-sm text-muted-foreground">Loading meetings...</p>
-          </CardContent>
-        </Card>
+        <div className="space-y-3">
+          <div className="h-20 bg-muted/60 rounded-xl animate-pulse" />
+          <div className="h-20 bg-muted/60 rounded-xl animate-pulse" />
+          <div className="h-20 bg-muted/60 rounded-xl animate-pulse" />
+        </div>
       ) : meetings.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center">
-            <Calendar className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground mb-4">No meetings yet. Create a new meeting for employees to contribute.</p>
-            <Button onClick={() => setShowNewDialog(true)}>New Meeting</Button>
+          <CardContent className="py-16 text-center">
+            <div className="inline-flex p-3 bg-accent rounded-full mb-3">
+              <Calendar className="h-5 w-5 text-accent-foreground" />
+            </div>
+            <p className="text-sm font-medium mb-1">No meetings yet</p>
+            <p className="text-sm text-muted-foreground mb-4">Create a new meeting for employees to contribute.</p>
+            <Button onClick={() => setShowNewDialog(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              New Meeting
+            </Button>
           </CardContent>
         </Card>
       ) : (
@@ -150,36 +157,41 @@ export default function AdminMeetings() {
           {meetings.map((meeting) => (
             <Card
               key={meeting.id}
-              className="cursor-pointer hover:bg-muted/50 transition-colors"
+              className="cursor-pointer card-interactive"
               onClick={() => navigate(`/admin/meetings/${meeting.id}`)}
             >
               <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">{meeting.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {new Date(meeting.meeting_date).toLocaleDateString("en-US", {
-                        weekday: "long",
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </p>
-                    {meeting.status === "draft" && meeting.total_employees !== undefined && (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2.5 bg-accent rounded-xl shrink-0">
+                      <CalendarDays className="h-4 w-4 text-accent-foreground" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{meeting.title}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {meeting.submitted_count} of {meeting.total_employees} employees submitted
+                        {new Date(meeting.meeting_date).toLocaleDateString("en-US", {
+                          weekday: "long",
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })}
                       </p>
-                    )}
+                      {meeting.status === "draft" && meeting.total_employees !== undefined && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {meeting.submitted_count} of {meeting.total_employees} employees submitted
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1 shrink-0">
                     <StatusBadge status={meeting.status} />
-                    <Button size="sm" variant="ghost">
+                    <Button size="icon" variant="ghost" className="h-8 w-8">
                       <Eye className="h-4 w-4" />
                     </Button>
                     <Button
-                      size="sm"
+                      size="icon"
                       variant="ghost"
-                      className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                      className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
                       onClick={(e) => {
                         e.stopPropagation();
                         setDeleteTarget(meeting);
@@ -187,6 +199,7 @@ export default function AdminMeetings() {
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground/50 ml-1" />
                   </div>
                 </div>
               </CardContent>

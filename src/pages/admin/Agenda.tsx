@@ -1,3 +1,4 @@
+//C:\Users\ACER\Desktop\NTE Loyalty\Employee Workspace\src\pages\admin\Agenda.tsx
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -9,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { Calendar, Copy, Save, FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import { Calendar, Copy, Save, FileText, ChevronLeft, ChevronRight, Users2, Sparkles } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -184,15 +185,19 @@ export default function AdminAgenda() {
     setSaving(false);
   };
 
+  const totalEmployeesInAgenda = agenda.reduce((sum, d) => sum + d.employees.length, 0);
+
   return (
     <PageLayout title="Meeting Agenda" description="Generate a meeting agenda from submitted reports">
       <div className="space-y-6">
         {/* Week Selector */}
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-accent rounded-lg">
+                  <Calendar className="h-4 w-4 text-accent-foreground" />
+                </div>
                 <span className="text-sm font-medium">Reporting Week</span>
               </div>
               <div className="flex items-center gap-2">
@@ -214,13 +219,16 @@ export default function AdminAgenda() {
         {/* Generate Button */}
         {!generated && (
           <Card>
-            <CardContent className="py-12 text-center">
-              <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground mb-4">
-                Generate a meeting agenda from all submitted weekly reports for {week.displayRange}
+            <CardContent className="py-16 text-center">
+              <div className="inline-flex p-3 bg-accent rounded-full mb-3">
+                <FileText className="h-5 w-5 text-accent-foreground" />
+              </div>
+              <p className="text-sm font-medium mb-1">Ready to generate an agenda</p>
+              <p className="text-sm text-muted-foreground mb-5 max-w-sm mx-auto">
+                Compiles every submitted weekly report for {week.displayRange} into one agenda, grouped by department.
               </p>
               <Button onClick={generateAgenda} className="gap-2">
-                <Calendar className="h-4 w-4" />
+                <Sparkles className="h-4 w-4" />
                 Generate Agenda
               </Button>
             </CardContent>
@@ -230,15 +238,18 @@ export default function AdminAgenda() {
         {/* Generated Agenda */}
         {generated && agenda.length > 0 && (
           <>
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">{agenda.length} departments · {agenda.reduce((sum, d) => sum + d.employees.length, 0)} employees</p>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                <Users2 className="h-3.5 w-3.5" />
+                {agenda.length} departments · {totalEmployeesInAgenda} employees
+              </p>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={copyToClipboard} className="gap-1">
-                  <Copy className="h-3 w-3" />
+                <Button variant="outline" size="sm" onClick={copyToClipboard} className="gap-1.5">
+                  <Copy className="h-3.5 w-3.5" />
                   Copy
                 </Button>
-                <Button size="sm" onClick={() => setShowSaveDialog(true)} className="gap-1">
-                  <Save className="h-3 w-3" />
+                <Button size="sm" onClick={() => setShowSaveDialog(true)} className="gap-1.5">
+                  <Save className="h-3.5 w-3.5" />
                   Save as Meeting
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => { setGenerated(false); setAgenda([]); }}>
@@ -253,7 +264,7 @@ export default function AdminAgenda() {
                   <CardTitle className="text-base">{dept.department_name} Department</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {dept.employees.map((emp) => (
+                  {dept.employees.map((emp, idx) => (
                     <div key={emp.employee_code}>
                       <p className="text-sm font-semibold mb-2">{emp.employee_name}</p>
 
@@ -282,11 +293,11 @@ export default function AdminAgenda() {
                       {emp.notes && (
                         <div>
                           <p className="text-xs font-medium text-muted-foreground mb-1">Notes:</p>
-                          <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2 rounded">{emp.notes}</p>
+                          <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2.5 rounded-lg border border-border/70">{emp.notes}</p>
                         </div>
                       )}
 
-                      <Separator className="mt-4" />
+                      {idx < dept.employees.length - 1 && <Separator className="mt-4" />}
                     </div>
                   ))}
                 </CardContent>

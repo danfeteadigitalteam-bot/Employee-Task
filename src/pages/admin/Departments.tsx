@@ -1,3 +1,4 @@
+//C:\Users\ACER\Desktop\NTE Loyalty\Employee Workspace\src\pages\admin\Departments.tsx
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { PageLayout } from "@/components/layout/PageLayout";
@@ -12,7 +13,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Building2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { toast } from "sonner";
 import type { Department } from "@/types/database";
@@ -103,40 +104,57 @@ export default function AdminDepartments() {
         </Button>
       }
     >
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {departments.map((dept) => (
-          <Card key={dept.id}>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">{dept.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Created {new Date(dept.created_at).toLocaleDateString()}
-                  </p>
+      {departments.length === 0 ? (
+        <Card>
+          <CardContent className="py-16 text-center">
+            <div className="inline-flex p-3 bg-accent rounded-full mb-3">
+              <Building2 className="h-5 w-5 text-accent-foreground" />
+            </div>
+            <p className="text-sm font-medium">No departments yet</p>
+            <p className="text-sm text-muted-foreground mt-1">Add your first department to get started.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {departments.map((dept) => (
+            <Card key={dept.id} className="card-interactive">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2.5 bg-accent rounded-xl shrink-0">
+                      <Building2 className="h-4 w-4 text-accent-foreground" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{dept.name}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Created {new Date(dept.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8"
+                      onClick={() => { setFormName(dept.name); setEditingDept(dept); }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                      onClick={() => setDeletingDept(dept)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8"
-                    onClick={() => { setFormName(dept.name); setEditingDept(dept); }}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8 text-red-500"
-                    onClick={() => setDeletingDept(dept)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Add Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>

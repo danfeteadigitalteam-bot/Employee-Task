@@ -1,3 +1,4 @@
+//C:\Users\ACER\Desktop\NTE Loyalty\Employee Workspace\src\pages\employee\Profile.tsx
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { EDGE_FUNCTION_BASE } from "@/lib/supabase";
@@ -7,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Lock } from "lucide-react";
+import { Lock, User, Hash, Building2, ShieldCheck, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 export default function EmployeeProfile() {
@@ -81,51 +82,44 @@ export default function EmployeeProfile() {
     }
   };
 
+  const infoRows = [
+    { label: "Name", value: employee?.full_name, icon: User },
+    { label: "Employee ID", value: employee?.employee_code, icon: Hash },
+    { label: "Department", value: (employee as any)?.department?.name || "—", icon: Building2 },
+    { label: "Role", value: employee?.role, icon: ShieldCheck, capitalize: true },
+  ];
+
   return (
     <PageLayout title="Profile" description="Your account details">
       <div className="max-w-lg space-y-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center text-xl font-semibold">
+        <Card className="overflow-hidden">
+          <div className="h-16 bg-gradient-to-r from-primary to-primary/70" />
+          <CardContent className="p-6 -mt-8">
+            <div className="flex items-end gap-4">
+              <div className="h-20 w-20 rounded-2xl bg-card border-4 border-card shadow-sm flex items-center justify-center text-xl font-semibold text-primary shrink-0">
                 {initials}
               </div>
-              <div>
-                <h2 className="text-lg font-semibold">{employee?.full_name}</h2>
+              <div className="pb-1 min-w-0">
+                <h2 className="text-lg font-semibold truncate">{employee?.full_name}</h2>
                 <p className="text-sm text-muted-foreground">{employee?.employee_code}</p>
               </div>
             </div>
 
             <Separator className="my-6" />
 
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground">Name</p>
-                  <p className="text-sm font-medium">{employee?.full_name}</p>
+            <div className="space-y-1">
+              {infoRows.map((row) => (
+                <div
+                  key={row.label}
+                  className="flex items-center justify-between py-2.5 -mx-2 px-2 rounded-lg"
+                >
+                  <div className="flex items-center gap-2.5 text-muted-foreground">
+                    <row.icon className="h-4 w-4" />
+                    <p className="text-sm">{row.label}</p>
+                  </div>
+                  <p className={`text-sm font-medium ${row.capitalize ? "capitalize" : ""}`}>{row.value}</p>
                 </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground">Employee ID</p>
-                  <p className="text-sm font-medium">{employee?.employee_code}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground">Department</p>
-                  <p className="text-sm font-medium">{(employee as any)?.department?.name || "—"}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground">Role</p>
-                  <p className="text-sm font-medium capitalize">{employee?.role}</p>
-                </div>
-              </div>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -134,7 +128,9 @@ export default function EmployeeProfile() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Lock className="h-4 w-4" />
+              <div className="p-1.5 bg-accent rounded-lg">
+                <Lock className="h-3.5 w-3.5 text-accent-foreground" />
+              </div>
               Change PIN
             </CardTitle>
           </CardHeader>
@@ -146,8 +142,9 @@ export default function EmployeeProfile() {
             ) : (
               <form onSubmit={handleChangePin} className="space-y-4">
                 {pinError && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
-                    {pinError}
+                  <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>{pinError}</span>
                   </div>
                 )}
 
@@ -162,6 +159,7 @@ export default function EmployeeProfile() {
                     maxLength={6}
                     inputMode="numeric"
                     disabled={isLoading}
+                    className="tracking-widest"
                   />
                 </div>
 
@@ -176,6 +174,7 @@ export default function EmployeeProfile() {
                     maxLength={6}
                     inputMode="numeric"
                     disabled={isLoading}
+                    className="tracking-widest"
                   />
                 </div>
 
@@ -190,10 +189,11 @@ export default function EmployeeProfile() {
                     maxLength={6}
                     inputMode="numeric"
                     disabled={isLoading}
+                    className="tracking-widest"
                   />
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 pt-1">
                   <Button type="submit" disabled={isLoading}>
                     {isLoading ? "Saving..." : "Save PIN"}
                   </Button>

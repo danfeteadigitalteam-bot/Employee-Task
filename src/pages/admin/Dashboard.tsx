@@ -1,9 +1,10 @@
+//C:\Users\ACER\Desktop\NTE Loyalty\Employee Workspace\src\pages\admin\Dashboard.tsx
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useWeek } from "@/hooks/useWeek";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, CheckCircle, XCircle, Building2 } from "lucide-react";
+import { Users, CheckCircle, XCircle, Building2, ChevronRight, LayoutGrid } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface DepartmentStats {
@@ -22,9 +23,11 @@ export default function AdminDashboard() {
   const [totalNotSubmitted, setTotalNotSubmitted] = useState(0);
   const [totalDepartments, setTotalDepartments] = useState(0);
   const [departmentStats, setDepartmentStats] = useState<DepartmentStats[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
+      setLoading(true);
       // Fetch departments
       const { data: departments } = await supabase.from("departments").select("*");
       if (departments) setTotalDepartments(departments.length);
@@ -85,67 +88,76 @@ export default function AdminDashboard() {
         setTotalNotSubmitted(notSubmitted);
         setDepartmentStats(Array.from(statsMap.values()));
       }
+      setLoading(false);
     };
 
     fetchData();
   }, [week.weekStartStr]);
+
+  const submissionRate = totalEmployees > 0 ? Math.round((totalSubmitted / totalEmployees) * 100) : 0;
 
   return (
     <PageLayout title="Admin Dashboard" description={`Week of ${week.displayRange}`}>
       <div className="space-y-6">
         {/* Summary Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-50 rounded-lg">
-                  <Users className="h-4 w-4 text-blue-600" />
-                </div>
+          <Card className="card-interactive">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs text-muted-foreground">Employees</p>
-                  <p className="text-2xl font-semibold">{totalEmployees}</p>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Employees</p>
+                  <p className="text-2xl font-semibold mt-1.5">{totalEmployees}</p>
+                </div>
+                <div className="p-2.5 bg-accent rounded-xl shrink-0">
+                  <Users className="h-4 w-4 text-accent-foreground" />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-50 rounded-lg">
+          <Card className="card-interactive">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Submitted</p>
+                  <p className="text-2xl font-semibold mt-1.5">{totalSubmitted}</p>
+                </div>
+                <div className="p-2.5 bg-emerald-50 rounded-xl shrink-0">
                   <CheckCircle className="h-4 w-4 text-emerald-600" />
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Submitted</p>
-                  <p className="text-2xl font-semibold">{totalSubmitted}</p>
-                </div>
+              </div>
+              <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                  style={{ width: `${submissionRate}%` }}
+                />
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-50 rounded-lg">
+          <Card className="card-interactive">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Not Submitted</p>
+                  <p className="text-2xl font-semibold mt-1.5">{totalNotSubmitted}</p>
+                </div>
+                <div className="p-2.5 bg-red-50 rounded-xl shrink-0">
                   <XCircle className="h-4 w-4 text-red-600" />
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Not Submitted</p>
-                  <p className="text-2xl font-semibold">{totalNotSubmitted}</p>
-                </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-50 rounded-lg">
-                  <Building2 className="h-4 w-4 text-amber-600" />
-                </div>
+          <Card className="card-interactive">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs text-muted-foreground">Departments</p>
-                  <p className="text-2xl font-semibold">{totalDepartments}</p>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Departments</p>
+                  <p className="text-2xl font-semibold mt-1.5">{totalDepartments}</p>
+                </div>
+                <div className="p-2.5 bg-accent rounded-xl shrink-0">
+                  <Building2 className="h-4 w-4 text-accent-foreground" />
                 </div>
               </div>
             </CardContent>
@@ -158,26 +170,56 @@ export default function AdminDashboard() {
             <CardTitle className="text-base">Department Overview</CardTitle>
           </CardHeader>
           <CardContent>
-            {departmentStats.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No departments found.</p>
+            {loading ? (
+              <div className="space-y-2">
+                <div className="h-14 bg-muted/60 rounded-xl animate-pulse" />
+                <div className="h-14 bg-muted/60 rounded-xl animate-pulse" />
+                <div className="h-14 bg-muted/60 rounded-xl animate-pulse" />
+              </div>
+            ) : departmentStats.length === 0 ? (
+              <div className="flex flex-col items-center justify-center text-center py-10">
+                <div className="p-3 bg-accent rounded-full mb-3">
+                  <LayoutGrid className="h-5 w-5 text-accent-foreground" />
+                </div>
+                <p className="text-sm font-medium">No departments found</p>
+              </div>
             ) : (
-              <div className="space-y-3">
-                {departmentStats.map((dept) => (
-                  <div
-                    key={dept.department_id}
-                    className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => navigate(`/admin/reports?department=${dept.department_id}`)}
-                  >
-                    <div>
-                      <p className="text-sm font-medium">{dept.department_name}</p>
-                      <p className="text-xs text-muted-foreground">{dept.total} employees</p>
+              <div className="space-y-2">
+                {departmentStats.map((dept) => {
+                  const rate = dept.total > 0 ? Math.round((dept.submitted / dept.total) * 100) : 0;
+                  return (
+                    <div
+                      key={dept.department_id}
+                      className="flex items-center justify-between p-3.5 rounded-xl border border-border card-interactive cursor-pointer"
+                      onClick={() => navigate(`/admin/reports?department=${dept.department_id}`)}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="p-2 bg-muted rounded-lg shrink-0">
+                          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{dept.department_name}</p>
+                          <p className="text-xs text-muted-foreground">{dept.total} employees</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 shrink-0">
+                        <div className="hidden sm:block w-24">
+                          <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                              style={{ width: `${rate}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 text-sm">
+                          <span className="text-emerald-600 font-medium">{dept.submitted} submitted</span>
+                          <span className="text-red-600 font-medium">{dept.not_submitted} pending</span>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-4 text-sm">
-                      <span className="text-emerald-600">{dept.submitted} submitted</span>
-                      <span className="text-red-600">{dept.not_submitted} pending</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>

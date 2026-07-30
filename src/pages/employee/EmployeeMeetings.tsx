@@ -1,3 +1,4 @@
+//C:\Users\ACER\Desktop\NTE Loyalty\Employee Workspace\src\pages\employee\EmployeeMeetings.tsx
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -9,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { BookOpen, Plus, Trash2, Send, CheckCircle2, Clock, Download } from "lucide-react";
+import { BookOpen, Plus, Trash2, Send, CheckCircle2, Clock, Download, ChevronRight, CalendarDays, MessageSquare, ListChecks } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { printMeetingMinutes } from "@/lib/printMeeting";
@@ -317,9 +318,12 @@ export default function EmployeeMeetings() {
     <PageLayout title="Meeting Minutes" description="Add your task checklist and view meeting details">
       {meetings.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center">
-            <BookOpen className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">No meetings yet.</p>
+          <CardContent className="py-16 text-center">
+            <div className="inline-flex p-3 bg-accent rounded-full mb-3">
+              <BookOpen className="h-5 w-5 text-accent-foreground" />
+            </div>
+            <p className="text-sm font-medium">No meetings yet</p>
+            <p className="text-sm text-muted-foreground mt-1">Meetings you're invited to will show up here.</p>
           </CardContent>
         </Card>
       ) : (
@@ -327,13 +331,16 @@ export default function EmployeeMeetings() {
           {meetings.map((meeting) => (
             <Card
               key={meeting.id}
-              className="cursor-pointer hover:bg-muted/50 transition-colors"
+              className="cursor-pointer card-interactive"
               onClick={() => openMeeting(meeting)}
             >
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">{meeting.title}</p>
+              <CardContent className="p-4 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2.5 bg-accent rounded-xl shrink-0">
+                    <CalendarDays className="h-4 w-4 text-accent-foreground" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{meeting.title}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {new Date(meeting.meeting_date).toLocaleDateString("en-US", {
                         weekday: "long",
@@ -343,12 +350,15 @@ export default function EmployeeMeetings() {
                       })}
                     </p>
                   </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
                   <Badge
                     variant={meeting.status === "published" ? "default" : "outline"}
                     className="text-xs"
                   >
                     {meeting.status === "published" ? "Published" : "Open for Input"}
                   </Badge>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
                 </div>
               </CardContent>
             </Card>
@@ -373,7 +383,7 @@ export default function EmployeeMeetings() {
           <DialogHeader className="flex-row items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <DialogTitle>{selectedMeeting?.title}</DialogTitle>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground mt-0.5">
                 {selectedMeeting && new Date(selectedMeeting.meeting_date).toLocaleDateString("en-US", {
                   weekday: "long",
                   year: "numeric",
@@ -382,21 +392,24 @@ export default function EmployeeMeetings() {
                 })}
               </p>
             </div>
-            <Button variant="outline" size="sm" onClick={downloadPDF} className="gap-1 whitespace-nowrap shrink-0">
-              <Download className="h-3 w-3" />
+            <Button variant="outline" size="sm" onClick={downloadPDF} className="gap-1.5 whitespace-nowrap shrink-0">
+              <Download className="h-3.5 w-3.5" />
               PDF
             </Button>
           </DialogHeader>
 
           <div className="space-y-6">
             {dialogLoading ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Loading meeting data...</p>
+              <div className="space-y-3 py-4">
+                <div className="h-16 bg-muted/60 rounded-lg animate-pulse" />
+                <div className="h-24 bg-muted/60 rounded-lg animate-pulse" />
+              </div>
             ) : (<>
             {/* Meeting Agenda */}
             {selectedMeeting?.agenda_content && (
               <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">MEETING AGENDA</p>
-                <div className="text-sm whitespace-pre-wrap bg-muted/50 p-4 rounded-lg border">
+                <p className="text-xs font-medium text-muted-foreground mb-2 tracking-wide uppercase">Meeting Agenda</p>
+                <div className="text-sm whitespace-pre-wrap bg-muted/50 p-4 rounded-xl border border-border/70">
                   {selectedMeeting.agenda_content}
                 </div>
               </div>
@@ -405,9 +418,9 @@ export default function EmployeeMeetings() {
             {/* Published meeting - show tasks */}
             {selectedMeeting?.status === "published" && (
               <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">MEETING TASKS</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2 tracking-wide uppercase">Meeting Minutes</p>
                 {selectedMeeting.overall_minutes ? (
-                  <div className="text-sm whitespace-pre-wrap bg-muted/50 p-4 rounded-lg">
+                  <div className="text-sm whitespace-pre-wrap bg-muted/50 p-4 rounded-xl border border-border/70">
                     {selectedMeeting.overall_minutes}
                   </div>
                 ) : (
@@ -423,19 +436,22 @@ export default function EmployeeMeetings() {
                 {adminTasks.length > 0 && (
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Tasks Assigned by Admin</CardTitle>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <ListChecks className="h-4 w-4 text-muted-foreground" />
+                        Tasks Assigned by Admin
+                      </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-2">
+                      <div className="space-y-1">
                         {adminTasks.map((task) => (
-                          <div key={task.id} className="flex items-center gap-2 text-sm">
+                          <div key={task.id} className="flex items-center gap-2 text-sm -mx-2 px-2 py-1.5 rounded-lg hover:bg-muted/50">
                             <Checkbox
                               checked={task.is_checked}
                               onCheckedChange={() => toggleAdminTask(task)}
                               disabled={hasSubmitted}
                             />
                             <span className={`flex-1 ${task.is_checked ? "line-through text-muted-foreground" : ""}`}>{task.task_text}</span>
-                            <span className="text-xs text-muted-foreground ml-auto">
+                            <span className="text-xs text-muted-foreground ml-auto shrink-0">
                               Week of {task.assigned_week_start}
                             </span>
                           </div>
@@ -449,7 +465,10 @@ export default function EmployeeMeetings() {
                 <Card>
                   <CardHeader>
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-base">Discussion & Decisions</CardTitle>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                        Discussion & Decisions
+                      </CardTitle>
                       {hasSubmitted && (
                         <Badge variant="default" className="gap-1">
                           <CheckCircle2 className="h-3 w-3" />
@@ -467,6 +486,7 @@ export default function EmployeeMeetings() {
                         onChange={(e) => setDiscussion(e.target.value)}
                         rows={3}
                         disabled={hasSubmitted}
+                        className="resize-none"
                       />
                     </div>
                     <div className="space-y-2">
@@ -477,6 +497,7 @@ export default function EmployeeMeetings() {
                         onChange={(e) => setDecisions(e.target.value)}
                         rows={3}
                         disabled={hasSubmitted}
+                        className="resize-none"
                       />
                     </div>
                   </CardContent>
@@ -486,7 +507,10 @@ export default function EmployeeMeetings() {
                 <Card>
                   <CardHeader>
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-base">Your Task Checklist</CardTitle>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <ListChecks className="h-4 w-4 text-muted-foreground" />
+                        Your Task Checklist
+                      </CardTitle>
                       {hasSubmitted && (
                         <Badge variant="default" className="gap-1">
                           <CheckCircle2 className="h-3 w-3" />
@@ -503,9 +527,9 @@ export default function EmployeeMeetings() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {myTasks.length > 0 && (
-                      <div className="space-y-2">
+                      <div className="space-y-1">
                         {myTasks.map((task) => (
-                          <div key={task.id} className="flex items-center gap-2 text-sm">
+                          <div key={task.id} className="flex items-center gap-2 text-sm group -mx-2 px-2 py-1.5 rounded-lg hover:bg-muted/50">
                             <Checkbox
                               checked={task.is_checked}
                               onCheckedChange={() => toggleTask(task)}
@@ -519,7 +543,7 @@ export default function EmployeeMeetings() {
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-7 w-7 text-red-500"
+                                className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50 shrink-0"
                                 onClick={() => deleteTask(task.id)}
                               >
                                 <Trash2 className="h-3 w-3" />
@@ -551,7 +575,7 @@ export default function EmployeeMeetings() {
                     )}
 
                     {!hasSubmitted && (myTasks.length > 0 || discussion.trim() || decisions.trim()) && (
-                      <Button onClick={submitTasks} disabled={isSubmitting} className="gap-2">
+                      <Button onClick={submitTasks} disabled={isSubmitting} className="gap-2 w-full sm:w-auto">
                         <Send className="h-4 w-4" />
                         {isSubmitting ? "Submitting..." : "Submit"}
                       </Button>

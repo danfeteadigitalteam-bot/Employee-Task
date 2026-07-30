@@ -1,3 +1,4 @@
+//C:\Users\ACER\Desktop\NTE Loyalty\Employee Workspace\src\pages\employee\WeeklyReport.tsx
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWeek } from "@/hooks/useWeek";
@@ -10,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { Plus, Pencil, Trash2, Check, X, Send, RotateCcw } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, X, Send, RotateCcw, ListTodo, CheckCircle2, NotebookPen, Link2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import type { WeeklyReport, WeeklyTask } from "@/types/database";
 
@@ -241,30 +242,61 @@ export default function WeeklyReportPage() {
   if (loading) {
     return (
       <PageLayout title="This Week's Report">
-        <div className="flex items-center justify-center py-20">
-          <div className="text-sm text-muted-foreground">Loading...</div>
+        <div className="space-y-4">
+          <div className="h-24 bg-muted/60 rounded-xl animate-pulse" />
+          <div className="h-40 bg-muted/60 rounded-xl animate-pulse" />
+          <div className="h-40 bg-muted/60 rounded-xl animate-pulse" />
         </div>
       </PageLayout>
     );
   }
 
+  const totalTasks = tasks.length + completedTasks.length;
+
   return (
     <PageLayout
       title="This Week's Report"
       description={week.displayRange}
-      actions={
-        report ? <StatusBadge status={report.status} /> : undefined
-      }
+      actions={report ? <StatusBadge status={report.status} /> : undefined}
     >
       <div className="space-y-6">
+        {isReadOnly && (
+          <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
+            <Lock className="h-4 w-4 text-muted-foreground shrink-0" />
+            <p className="text-sm text-muted-foreground">
+              This report was submitted on{" "}
+              <span className="font-medium text-foreground">
+                {report?.submitted_at ? new Date(report.submitted_at).toLocaleString() : "—"}
+              </span>{" "}
+              and is now read-only.
+            </p>
+          </div>
+        )}
+
         {/* Section 1: Tasks for This Week */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Tasks for This Week</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <ListTodo className="h-4 w-4 text-muted-foreground" />
+                Tasks for This Week
+              </CardTitle>
+              {totalTasks > 0 && (
+                <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded-full">
+                  {completedTasks.length}/{totalTasks} done
+                </span>
+              )}
+            </div>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-1">
+            {tasks.length === 0 && (
+              <p className="text-sm text-muted-foreground py-2">No planned tasks yet — add what you intend to work on below.</p>
+            )}
             {tasks.map((task) => (
-              <div key={task.id} className="flex items-start gap-3 group">
+              <div
+                key={task.id}
+                className="flex items-start gap-3 group -mx-2 px-2 py-2 rounded-lg hover:bg-muted/50 transition-colors"
+              >
                 <Checkbox
                   checked={task.is_checked}
                   onCheckedChange={() => toggleTask(task)}
@@ -296,10 +328,13 @@ export default function WeeklyReportPage() {
                       {task.task_text}
                     </span>
                     {task.source === "meeting" && (
-                      <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">Meeting</span>
+                      <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-md shrink-0">
+                        <Link2 className="h-3 w-3" />
+                        Meeting
+                      </span>
                     )}
                     {!isReadOnly && (
-                      <div className="hidden group-hover:flex items-center gap-1">
+                      <div className="hidden group-hover:flex items-center gap-1 shrink-0">
                         <Button
                           size="icon"
                           variant="ghost"
@@ -311,7 +346,7 @@ export default function WeeklyReportPage() {
                         >
                           <Pencil className="h-3 w-3" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={() => deleteTask(task)}>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => deleteTask(task)}>
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
@@ -322,17 +357,17 @@ export default function WeeklyReportPage() {
             ))}
 
             {!isReadOnly && (
-              <div className="flex items-center gap-2 pt-2">
+              <div className="flex items-center gap-2 pt-3 mt-2 border-t border-border/60">
                 <Input
                   placeholder="Add a task..."
                   value={newTaskText}
                   onChange={(e) => setNewTaskText(e.target.value)}
-                  className="h-8 text-sm"
+                  className="h-9 text-sm"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") addTask();
                   }}
                 />
-                <Button size="sm" variant="outline" onClick={addTask} disabled={!newTaskText.trim()}>
+                <Button size="sm" variant="outline" onClick={addTask} disabled={!newTaskText.trim()} className="shrink-0">
                   <Plus className="h-3 w-3 mr-1" />
                   Add Task
                 </Button>
@@ -344,11 +379,20 @@ export default function WeeklyReportPage() {
         {/* Section 2: What I Did This Week */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">What I Did This Week</CardTitle>
+            <CardTitle className="text-base flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+              What I Did This Week
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-1">
+            {completedTasks.length === 0 && (
+              <p className="text-sm text-muted-foreground py-2">Nothing logged yet — check off a planned task or add completed work directly.</p>
+            )}
             {completedTasks.map((task) => (
-              <div key={task.id} className="flex items-start gap-3 group">
+              <div
+                key={task.id}
+                className="flex items-start gap-3 group -mx-2 px-2 py-2 rounded-lg hover:bg-muted/50 transition-colors"
+              >
                 <Checkbox
                   checked={task.is_checked}
                   onCheckedChange={() => toggleTask(task)}
@@ -380,7 +424,7 @@ export default function WeeklyReportPage() {
                       {task.task_text}
                     </span>
                     {!isReadOnly && (
-                      <div className="hidden group-hover:flex items-center gap-1">
+                      <div className="hidden group-hover:flex items-center gap-1 shrink-0">
                         <Button
                           size="icon"
                           variant="ghost"
@@ -392,7 +436,7 @@ export default function WeeklyReportPage() {
                         >
                           <Pencil className="h-3 w-3" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={() => deleteTask(task)}>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => deleteTask(task)}>
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
@@ -403,17 +447,17 @@ export default function WeeklyReportPage() {
             ))}
 
             {!isReadOnly && (
-              <div className="flex items-center gap-2 pt-2">
+              <div className="flex items-center gap-2 pt-3 mt-2 border-t border-border/60">
                 <Input
                   placeholder="Add completed work..."
                   value={newCompletedText}
                   onChange={(e) => setNewCompletedText(e.target.value)}
-                  className="h-8 text-sm"
+                  className="h-9 text-sm"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") addCompletedTask();
                   }}
                 />
-                <Button size="sm" variant="outline" onClick={addCompletedTask} disabled={!newCompletedText.trim()}>
+                <Button size="sm" variant="outline" onClick={addCompletedTask} disabled={!newCompletedText.trim()} className="shrink-0">
                   <Plus className="h-3 w-3 mr-1" />
                   Add
                 </Button>
@@ -425,7 +469,10 @@ export default function WeeklyReportPage() {
         {/* Section 3: Weekly Notes */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Weekly Notes</CardTitle>
+            <CardTitle className="text-base flex items-center gap-2">
+              <NotebookPen className="h-4 w-4 text-muted-foreground" />
+              Weekly Notes
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <Textarea
@@ -434,6 +481,7 @@ export default function WeeklyReportPage() {
               onChange={(e) => setNotes(e.target.value)}
               disabled={isReadOnly}
               rows={4}
+              className="resize-none"
             />
           </CardContent>
         </Card>
@@ -441,7 +489,7 @@ export default function WeeklyReportPage() {
         {/* Submit Button */}
         {!isReadOnly && report && (
           <div className="flex justify-end">
-            <Button onClick={() => setShowSubmitConfirm(true)} className="gap-2">
+            <Button onClick={() => setShowSubmitConfirm(true)} className="gap-2" size="lg">
               <Send className="h-4 w-4" />
               Submit Weekly Report
             </Button>
@@ -449,10 +497,7 @@ export default function WeeklyReportPage() {
         )}
 
         {isReadOnly && report && (
-          <div className="text-center py-4 space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Report submitted on {report.submitted_at ? new Date(report.submitted_at).toLocaleString() : "—"}
-            </p>
+          <div className="flex justify-center">
             <Button variant="outline" size="sm" onClick={() => setShowResetConfirm(true)} className="gap-2">
               <RotateCcw className="h-3 w-3" />
               Reset to Draft

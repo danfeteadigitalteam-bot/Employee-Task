@@ -1,3 +1,5 @@
+//C:\Users\ACER\Desktop\NTE Loyalty\Employee Workspace\src\pages\admin\MeetingDetail.tsx
+
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
@@ -18,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Send, ArrowLeft, CheckCircle2, Clock, Download } from "lucide-react";
+import { Plus, Trash2, Send, ArrowLeft, CheckCircle2, Clock, Download, ListChecks, MessageSquare, FileEdit, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { useWeek } from "@/hooks/useWeek";
 import { printMeetingMinutes } from "@/lib/printMeeting";
@@ -28,6 +30,15 @@ interface EmployeeTasks {
   employee: Employee;
   tasks: MeetingTask[];
   submitted: boolean;
+}
+
+function initialsOf(name: string) {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
 }
 
 export default function MeetingDetail() {
@@ -471,8 +482,10 @@ export default function MeetingDetail() {
   if (!meeting) {
     return (
       <PageLayout title="Meeting">
-        <div className="flex items-center justify-center py-20">
-          <p className="text-sm text-muted-foreground">Loading...</p>
+        <div className="space-y-4">
+          <div className="h-16 bg-muted/60 rounded-xl animate-pulse" />
+          <div className="h-40 bg-muted/60 rounded-xl animate-pulse" />
+          <div className="h-40 bg-muted/60 rounded-xl animate-pulse" />
         </div>
       </PageLayout>
     );
@@ -491,29 +504,29 @@ export default function MeetingDetail() {
         day: "numeric",
       })}
       actions={
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <StatusBadge status={meeting.status} />
-          <Button variant="outline" size="sm" onClick={() => navigate("/admin/meetings")}>
-            <ArrowLeft className="h-4 w-4 mr-1" />
+          <Button variant="outline" size="sm" onClick={() => navigate("/admin/meetings")} className="gap-1.5">
+            <ArrowLeft className="h-4 w-4" />
             Back
           </Button>
           <Button
             variant="outline"
             size="sm"
-            className="text-red-500 hover:text-red-600 hover:bg-red-50"
+            className="text-red-500 hover:text-red-600 hover:bg-red-50 gap-1.5"
             onClick={() => setShowDeleteConfirm(true)}
           >
-            <Trash2 className="h-4 w-4 mr-1" />
+            <Trash2 className="h-4 w-4" />
             Delete
           </Button>
           {meeting.status === "draft" && (
-            <Button size="sm" onClick={() => setShowPublishConfirm(true)} className="gap-1" disabled={isPublishing}>
-              <Send className="h-3 w-3" />
+            <Button size="sm" onClick={() => setShowPublishConfirm(true)} className="gap-1.5" disabled={isPublishing}>
+              <Send className="h-3.5 w-3.5" />
               Publish
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={downloadPDF} className="gap-1">
-            <Download className="h-3 w-3" />
+          <Button variant="outline" size="sm" onClick={downloadPDF} className="gap-1.5">
+            <Download className="h-3.5 w-3.5" />
             PDF
           </Button>
         </div>
@@ -523,15 +536,21 @@ export default function MeetingDetail() {
         {/* Status Summary */}
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">Employee Tasks</p>
-                <p className="text-xs text-muted-foreground">
-                  {submittedCount} of {employeeGroups.length} employees submitted · {totalTasks} total tasks
-                </p>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-accent rounded-lg">
+                  <ListChecks className="h-4 w-4 text-accent-foreground" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Employee Tasks</p>
+                  <p className="text-xs text-muted-foreground">
+                    {submittedCount} of {employeeGroups.length} employees submitted · {totalTasks} total tasks
+                  </p>
+                </div>
               </div>
               {meeting.status === "draft" && totalTasks > 0 && (
-                <Button variant="outline" size="sm" onClick={generateMinutes} className="gap-1">
+                <Button variant="outline" size="sm" onClick={generateMinutes} className="gap-1.5">
+                  <Wand2 className="h-3.5 w-3.5" />
                   Generate Minutes
                 </Button>
               )}
@@ -543,10 +562,13 @@ export default function MeetingDetail() {
         {meeting.agenda_content && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Meeting Agenda</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileEdit className="h-4 w-4 text-muted-foreground" />
+                Meeting Agenda
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-sm whitespace-pre-wrap bg-muted/50 p-4 rounded-lg border">
+              <div className="text-sm whitespace-pre-wrap bg-muted/50 p-4 rounded-xl border border-border/70">
                 {meeting.agenda_content}
               </div>
             </CardContent>
@@ -558,9 +580,12 @@ export default function MeetingDetail() {
           <Card key={group.employee.id}>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">
+                <CardTitle className="text-base flex items-center gap-2.5">
+                  <div className="h-7 w-7 rounded-full bg-accent flex items-center justify-center text-xs font-semibold text-accent-foreground shrink-0">
+                    {initialsOf(group.employee.full_name)}
+                  </div>
                   {group.employee.full_name}
-                  <span className="text-xs text-muted-foreground font-normal ml-2">
+                  <span className="text-xs text-muted-foreground font-normal">
                     {group.employee.employee_code}
                   </span>
                 </CardTitle>
@@ -579,22 +604,22 @@ export default function MeetingDetail() {
             </CardHeader>
             <CardContent>
               {group.tasks.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {group.tasks.map((task) => (
-                    <div key={task.id} className="flex items-center gap-3 p-2 rounded border">
+                    <div key={task.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-border/70 bg-muted/20">
                       <Checkbox checked={task.is_checked} disabled />
                       <span className={`flex-1 text-sm ${task.is_checked ? "line-through text-muted-foreground" : ""}`}>{task.task_text}</span>
-                      <Badge variant={task.source === "admin" ? "secondary" : "outline"} className="text-xs">
+                      <Badge variant={task.source === "admin" ? "secondary" : "outline"} className="text-xs shrink-0">
                         {task.source === "admin" ? "Admin" : "Employee"}
                       </Badge>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground shrink-0">
                         Week of {task.assigned_week_start}
                       </span>
                       {meeting.status === "draft" && (
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-7 w-7 text-red-500"
+                          className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50 shrink-0"
                           onClick={() => deleteTask(task.id)}
                         >
                           <Trash2 className="h-3 w-3" />
@@ -612,7 +637,7 @@ export default function MeetingDetail() {
 
         {employeeGroups.length === 0 && (
           <Card>
-            <CardContent className="py-8 text-center">
+            <CardContent className="py-10 text-center">
               <p className="text-sm text-muted-foreground">
                 No employee tasks yet. Employees will add their checklists in the meeting.
               </p>
@@ -624,7 +649,10 @@ export default function MeetingDetail() {
         {departmentNotes.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Employee Discussion & Decisions</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                Employee Discussion & Decisions
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {departmentNotes.map((note) => {
@@ -633,7 +661,7 @@ export default function MeetingDetail() {
                 const hasContent = (note.discussion && note.discussion.trim()) || (note.decisions && note.decisions.trim());
                 if (!hasContent) return null;
                 return (
-                  <div key={note.id} className="border rounded-lg p-3 space-y-2">
+                  <div key={note.id} className="border border-border rounded-xl p-3.5 space-y-2">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium">
                         {empName}
@@ -649,13 +677,13 @@ export default function MeetingDetail() {
                     {note.discussion && note.discussion.trim() && (
                       <div>
                         <p className="text-xs font-medium text-muted-foreground mb-1">Discussion</p>
-                        <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2 rounded">{note.discussion}</p>
+                        <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2.5 rounded-lg">{note.discussion}</p>
                       </div>
                     )}
                     {note.decisions && note.decisions.trim() && (
                       <div>
                         <p className="text-xs font-medium text-muted-foreground mb-1">Decisions</p>
-                        <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2 rounded">{note.decisions}</p>
+                        <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2.5 rounded-lg">{note.decisions}</p>
                       </div>
                     )}
                   </div>
@@ -668,14 +696,10 @@ export default function MeetingDetail() {
         {/* Overall Minutes */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Overall Meeting Minutes</CardTitle>
-              {meeting.status === "draft" && overallMinutes && (
-                <Button variant="outline" size="sm" onClick={() => {}}>
-                  Edit
-                </Button>
-              )}
-            </div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <FileEdit className="h-4 w-4 text-muted-foreground" />
+              Overall Meeting Minutes
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {overallMinutes ? (
@@ -683,7 +707,7 @@ export default function MeetingDetail() {
                 value={overallMinutes}
                 onChange={(e) => setOverallMinutes(e.target.value)}
                 rows={12}
-                className="font-mono text-sm"
+                className="font-mono text-sm resize-none"
                 disabled={meeting.status === "published"}
               />
             ) : (
@@ -692,7 +716,7 @@ export default function MeetingDetail() {
               </p>
             )}
             {meeting.status === "draft" && overallMinutes && (
-              <Button size="sm" onClick={saveMinutes} className="mt-2">Save Minutes</Button>
+              <Button size="sm" onClick={saveMinutes} className="mt-3">Save Minutes</Button>
             )}
           </CardContent>
         </Card>
@@ -701,7 +725,10 @@ export default function MeetingDetail() {
         {meeting.status === "draft" && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Add Task for Employee</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Plus className="h-4 w-4 text-muted-foreground" />
+                Add Task for Employee
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-col sm:flex-row gap-2">
