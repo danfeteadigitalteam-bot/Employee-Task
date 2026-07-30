@@ -41,7 +41,7 @@ export default function WeeklyReportPage() {
       .select("*")
       .eq("employee_id", employee.id)
       .eq("week_start", week.weekStartStr)
-      .single();
+      .maybeSingle();
 
     if (reportData) {
       setReport(reportData as WeeklyReport);
@@ -157,16 +157,22 @@ export default function WeeklyReportPage() {
     }
   };
 
-  // Toggle task
+  // Toggle task - moves between planned/completed on check/uncheck
   const toggleTask = async (task: WeeklyTask) => {
     if (isReadOnly) return;
-    const newChecked = !task.is_checked;
-    await supabase.from("weekly_tasks").update({ is_checked: newChecked }).eq("id", task.id);
 
     if (task.task_type === "planned") {
-      setTasks(tasks.map((t) => (t.id === task.id ? { ...t, is_checked: newChecked } : t)));
+      // Checked → move to completed
+      await supabase.from("weekly_tasks").update({ is_checked: true, task_type: "completed" }).eq("id", task.id);
+      const updated: WeeklyTask = { ...task, is_checked: true, task_type: "completed" };
+      setTasks(tasks.filter((t) => t.id !== task.id));
+      setCompletedTasks([...completedTasks, updated]);
     } else {
-      setCompletedTasks(completedTasks.map((t) => (t.id === task.id ? { ...t, is_checked: newChecked } : t)));
+      // Unchecked → move back to planned
+      await supabase.from("weekly_tasks").update({ is_checked: false, task_type: "planned" }).eq("id", task.id);
+      const updated: WeeklyTask = { ...task, is_checked: false, task_type: "planned" };
+      setCompletedTasks(completedTasks.filter((t) => t.id !== task.id));
+      setTasks([...tasks, updated]);
     }
   };
 

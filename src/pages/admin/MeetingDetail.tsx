@@ -18,9 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Send, ArrowLeft, CheckCircle2, Clock } from "lucide-react";
+import { Plus, Trash2, Send, ArrowLeft, CheckCircle2, Clock, Download } from "lucide-react";
 import { toast } from "sonner";
 import { useWeek } from "@/hooks/useWeek";
+import { printMeetingMinutes } from "@/lib/printMeeting";
 import type { Meeting, MeetingTask, MeetingDepartmentNote, Employee } from "@/types/database";
 
 interface EmployeeTasks {
@@ -56,7 +57,7 @@ export default function MeetingDetail() {
       .from("meetings")
       .select("*")
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (!meetingData) return;
     setMeeting(meetingData as Meeting);
@@ -108,6 +109,25 @@ export default function MeetingDetail() {
     fetchData();
   }, [fetchData]);
 
+  // Real-time subscription for meeting changes
+  useEffect(() => {
+    if (!id) return;
+    const channel = supabase
+      .channel(`meeting-detail-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "meeting_department_notes", filter: `meeting_id=eq.${id}` },
+        () => { fetchData(); }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "meeting_tasks", filter: `meeting_id=eq.${id}` },
+        () => { fetchData(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [id, fetchData]);
+
   const addTask = async () => {
     if (!id || !newTaskEmployee || !newTaskText.trim()) return;
 
@@ -136,7 +156,7 @@ export default function MeetingDetail() {
         .select("id")
         .eq("employee_id", emp.id)
         .eq("week_start", nextWeekStart)
-        .single();
+        .maybeSingle();
 
       let reportId = existingReport?.id;
 
@@ -153,7 +173,7 @@ export default function MeetingDetail() {
             status: "draft",
           })
           .select("id")
-          .single();
+          .maybeSingle();
         reportId = newReport?.id;
       }
 
@@ -164,7 +184,7 @@ export default function MeetingDetail() {
           .eq("report_id", reportId)
           .order("sort_order", { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         await supabase.from("weekly_tasks").insert({
           report_id: reportId,
@@ -278,6 +298,67 @@ export default function MeetingDetail() {
     }
   };
 
+  const downloadPDF = () => {
+    if (!meeting) return;
+    const dateStr = new Date(meeting.meeting_date).toLocaleDateString("en-US", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+    });
+
+    let contentHtml = "";
+
+    if (meeting.agenda_content) {
+      contentHtml += `<div class="section"><h2>Meeting Agenda</h2><div class="discussion">${meeting.agenda_content}</div></div>`;
+    }
+
+    if (employeeGroups.length > 0) {
+      contentHtml += `<div class="section"><h2>Employee Tasks</h2>`;
+      employeeGroups.forEach((group) => {
+        if (group.tasks.length === 0) return;
+        const empTasks = group.tasks.filter((t) => t.source === "employee");
+        const adminTasks = group.tasks.filter((t) => t.source === "admin");
+        contentHtml += `<h3>${group.employee.full_name} (${group.employee.employee_code})</h3>`;
+        if (empTasks.length > 0) {
+          contentHtml += `<ul class="task-list">`;
+          empTasks.forEach((t) => {
+            contentHtml += `<li class="${t.is_checked ? "checked" : "unchecked"}">${t.is_checked ? "✓" : "○"} ${t.task_text}</li>`;
+          });
+          contentHtml += `</ul>`;
+        }
+        if (adminTasks.length > 0) {
+          contentHtml += `<p class="label">Assigned by Admin:</p><ul class="task-list">`;
+          adminTasks.forEach((t) => {
+            contentHtml += `<li class="${t.is_checked ? "checked" : "unchecked"}">${t.is_checked ? "✓" : "○"} ${t.task_text} <span style="color:#999;font-size:0.75rem">(Week of ${t.assigned_week_start})</span></li>`;
+          });
+          contentHtml += `</ul>`;
+        }
+      });
+      contentHtml += `</div>`;
+    }
+
+    const notesWithContent = departmentNotes.filter(
+      (n) => (n.discussion && n.discussion.trim()) || (n.decisions && n.decisions.trim())
+    );
+    if (notesWithContent.length > 0) {
+      contentHtml += `<div class="section"><h2>Discussion &amp; Decisions</h2>`;
+      notesWithContent.forEach((note) => {
+        const empName = (note as any).employees?.full_name || "Unknown";
+        if (note.discussion && note.discussion.trim()) {
+          contentHtml += `<p class="label">${empName} — Discussion</p><div class="discussion">${note.discussion}</div>`;
+        }
+        if (note.decisions && note.decisions.trim()) {
+          contentHtml += `<p class="label">${empName} — Decisions</p><div class="decision">${note.decisions}</div>`;
+        }
+      });
+      contentHtml += `</div>`;
+    }
+
+    if (overallMinutes) {
+      contentHtml += `<div class="section"><h2>Overall Meeting Minutes</h2><div class="discussion">${overallMinutes}</div></div>`;
+    }
+
+    printMeetingMinutes(meeting.title, dateStr, contentHtml);
+  };
+
   const publishMeeting = async () => {
     if (!id) return;
     setIsPublishing(true);
@@ -295,7 +376,7 @@ export default function MeetingDetail() {
     }
 
     // Process each employee/week group
-    const insertPromises: Promise<any>[] = [];
+    const insertPromises: any[] = [];
     for (const [key, empTasks] of tasksByEmployeeWeek) {
       const [empId, weekStart] = key.split("::");
 
@@ -305,10 +386,9 @@ export default function MeetingDetail() {
         .select("id")
         .eq("employee_id", empId)
         .eq("week_start", weekStart)
-        .single();
+        .maybeSingle();
 
       if (existingReport) {
-        // Parallel: delete old tasks + reset report status
         await Promise.all([
           supabase.from("weekly_tasks").delete().eq("report_id", existingReport.id).eq("source", "meeting"),
           supabase.from("weekly_reports").update({ status: "draft", submitted_at: null }).eq("id", existingReport.id),
@@ -330,7 +410,7 @@ export default function MeetingDetail() {
             status: "draft",
           })
           .select("id")
-          .single();
+          .maybeSingle();
         reportId = newReport?.id;
       }
 
@@ -432,6 +512,10 @@ export default function MeetingDetail() {
               Publish
             </Button>
           )}
+          <Button variant="outline" size="sm" onClick={downloadPDF} className="gap-1">
+            <Download className="h-3 w-3" />
+            PDF
+          </Button>
         </div>
       }
     >

@@ -9,16 +9,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { BookOpen, Plus, Trash2, Send, CheckCircle2, Clock } from "lucide-react";
+import { BookOpen, Plus, Trash2, Send, CheckCircle2, Clock, Download } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { printMeetingMinutes } from "@/lib/printMeeting";
 import type { Meeting, MeetingTask } from "@/types/database";
 
 export default function EmployeeMeetings() {
   const { employee } = useAuth();
   const week = useWeek();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [dialogLoading, setDialogLoading] = useState(false);
   const [myTasks, setMyTasks] = useState<MeetingTask[]>([]);
@@ -81,7 +82,7 @@ export default function EmployeeMeetings() {
         .select("*")
         .eq("meeting_id", meeting.id)
         .eq("employee_id", employee.id)
-        .single(),
+        .maybeSingle(),
     ]);
 
     // Process my tasks
@@ -158,36 +159,37 @@ export default function EmployeeMeetings() {
     if (!employee || !selectedMeeting) return;
     setIsSubmitting(true);
 
-    // Save discussion/decisions to meeting_department_notes
-    if (myNoteId) {
-      await supabase
-        .from("meeting_department_notes")
-        .update({
-          discussion: discussion.trim(),
-          decisions: decisions.trim(),
-          status: "submitted",
-          submitted_at: new Date().toISOString(),
-        })
-        .eq("id", myNoteId);
-    } else if (discussion.trim() || decisions.trim()) {
-      const { data: newNote } = await supabase
-        .from("meeting_department_notes")
-        .insert({
-          meeting_id: selectedMeeting.id,
-          employee_id: employee.id,
-          department_id: employee.department_id,
-          discussion: discussion.trim(),
-          decisions: decisions.trim(),
-          status: "submitted",
-          submitted_at: new Date().toISOString(),
-        })
-        .select("id")
-        .single();
-      if (newNote) setMyNoteId(newNote.id);
-    }
+    // Parallelize independent operations
+    const saveNotesPromise = (async () => {
+      if (myNoteId) {
+        return supabase
+          .from("meeting_department_notes")
+          .update({
+            discussion: discussion.trim(),
+            decisions: decisions.trim(),
+            status: "submitted",
+            submitted_at: new Date().toISOString(),
+          })
+          .eq("id", myNoteId);
+      } else if (discussion.trim() || decisions.trim()) {
+        const { data: newNote } = await supabase
+          .from("meeting_department_notes")
+          .insert({
+            meeting_id: selectedMeeting.id,
+            employee_id: employee.id,
+            department_id: employee.department_id,
+            discussion: discussion.trim(),
+            decisions: decisions.trim(),
+            status: "submitted",
+            submitted_at: new Date().toISOString(),
+          })
+          .select("id")
+          .maybeSingle();
+        if (newNote) setMyNoteId(newNote.id);
+      }
+    })();
 
-    // Mark all my tasks as submitted
-    await supabase
+    const markTasksPromise = supabase
       .from("meeting_tasks")
       .update({ status: "submitted" })
       .eq("meeting_id", selectedMeeting.id)
@@ -195,14 +197,16 @@ export default function EmployeeMeetings() {
       .eq("source", "employee")
       .eq("status", "draft");
 
-    // Find or create report once (not per task)
+    await Promise.all([saveNotesPromise, markTasksPromise]);
+
+    // Find or create report
     let reportId: string | null = null;
     const { data: existingReport } = await supabase
       .from("weekly_reports")
       .select("id")
       .eq("employee_id", employee.id)
       .eq("week_start", week.weekStartStr)
-      .single();
+      .maybeSingle();
 
     if (existingReport) {
       reportId = existingReport.id;
@@ -219,13 +223,12 @@ export default function EmployeeMeetings() {
           status: "draft",
         })
         .select("id")
-        .single();
+        .maybeSingle();
       reportId = newReport?.id || null;
     }
 
     // Batch insert all tasks in one query
     if (reportId && myTasks.length > 0) {
-      // Filter out tasks already in weekly_tasks
       const { data: existingTasks } = await supabase
         .from("weekly_tasks")
         .select("task_text")
@@ -242,7 +245,7 @@ export default function EmployeeMeetings() {
           .eq("report_id", reportId)
           .order("sort_order", { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         let sortBase = (maxOrderRow?.sort_order ?? -1) + 1;
 
@@ -263,6 +266,51 @@ export default function EmployeeMeetings() {
     setHasSubmitted(true);
     setIsSubmitting(false);
     toast.success("Tasks submitted and added to your weekly checklist!");
+  };
+
+  const downloadPDF = () => {
+    if (!selectedMeeting) return;
+    const dateStr = new Date(selectedMeeting.meeting_date).toLocaleDateString("en-US", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+    });
+    let contentHtml = "";
+
+    if (selectedMeeting.agenda_content) {
+      contentHtml += `<div class="section"><h2>Meeting Agenda</h2><div class="discussion">${selectedMeeting.agenda_content}</div></div>`;
+    }
+
+    if (adminTasks.length > 0) {
+      contentHtml += `<div class="section"><h2>Tasks Assigned by Admin</h2><ul class="task-list">`;
+      adminTasks.forEach((t) => {
+        contentHtml += `<li class="${t.is_checked ? "checked" : "unchecked"}">${t.is_checked ? "✓" : "○"} ${t.task_text} <span style="color:#999;font-size:0.75rem">(Week of ${t.assigned_week_start})</span></li>`;
+      });
+      contentHtml += `</ul></div>`;
+    }
+
+    if (myTasks.length > 0) {
+      contentHtml += `<div class="section"><h2>My Task Checklist</h2><ul class="task-list">`;
+      myTasks.forEach((t) => {
+        contentHtml += `<li class="${t.is_checked ? "checked" : "unchecked"}">${t.is_checked ? "✓" : "○"} ${t.task_text}</li>`;
+      });
+      contentHtml += `</ul></div>`;
+    }
+
+    if (discussion.trim() || decisions.trim()) {
+      contentHtml += `<div class="section"><h2>Discussion &amp; Decisions</h2>`;
+      if (discussion.trim()) {
+        contentHtml += `<p class="label">Discussion</p><div class="discussion">${discussion}</div>`;
+      }
+      if (decisions.trim()) {
+        contentHtml += `<p class="label">Decisions</p><div class="decision">${decisions}</div>`;
+      }
+      contentHtml += `</div>`;
+    }
+
+    if (selectedMeeting.overall_minutes) {
+      contentHtml += `<div class="section"><h2>Overall Meeting Minutes</h2><div class="discussion">${selectedMeeting.overall_minutes}</div></div>`;
+    }
+
+    printMeetingMinutes(selectedMeeting.title, dateStr, contentHtml);
   };
 
   return (
@@ -322,16 +370,22 @@ export default function EmployeeMeetings() {
         }
       }}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{selectedMeeting?.title}</DialogTitle>
-            <p className="text-sm text-muted-foreground">
-              {selectedMeeting && new Date(selectedMeeting.meeting_date).toLocaleDateString("en-US", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
-            </p>
+          <DialogHeader className="flex-row items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <DialogTitle>{selectedMeeting?.title}</DialogTitle>
+              <p className="text-sm text-muted-foreground">
+                {selectedMeeting && new Date(selectedMeeting.meeting_date).toLocaleDateString("en-US", {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={downloadPDF} className="gap-1 whitespace-nowrap shrink-0">
+              <Download className="h-3 w-3" />
+              PDF
+            </Button>
           </DialogHeader>
 
           <div className="space-y-6">

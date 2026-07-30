@@ -30,7 +30,7 @@ export default function EmployeeDashboard() {
         .select("status, submitted_at, weekly_tasks(id, task_type)")
         .eq("employee_id", employee.id)
         .eq("week_start", week.weekStartStr)
-        .single();
+        .maybeSingle();
 
       if (reportData) {
         const tasks = (reportData as any).weekly_tasks || [];
