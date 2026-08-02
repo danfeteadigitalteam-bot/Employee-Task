@@ -363,10 +363,6 @@ export default function MeetingDetail() {
       contentHtml += `</div>`;
     }
 
-    if (overallMinutes) {
-      contentHtml += `<div class="section"><h2>Overall Meeting Minutes</h2><div class="discussion">${overallMinutes}</div></div>`;
-    }
-
     printMeetingMinutes(meeting.title, dateStr, contentHtml);
   };
 

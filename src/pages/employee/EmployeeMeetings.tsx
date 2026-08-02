@@ -307,10 +307,6 @@ export default function EmployeeMeetings() {
       contentHtml += `</div>`;
     }
 
-    if (selectedMeeting.overall_minutes) {
-      contentHtml += `<div class="section"><h2>Overall Meeting Minutes</h2><div class="discussion">${selectedMeeting.overall_minutes}</div></div>`;
-    }
-
     printMeetingMinutes(selectedMeeting.title, dateStr, contentHtml);
   };
 
