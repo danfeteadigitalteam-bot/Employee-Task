@@ -33,7 +33,7 @@ const queryClient = new QueryClient();
 function ProtectedRoute({ children, allowedRole }: { children: ReactNode; allowedRole?: string }) {
   const { employee, isLoading } = useAuth();
 
-  if (isLoading) {
+  if (isLoading && !employee) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-sm text-muted-foreground">Loading...</p>

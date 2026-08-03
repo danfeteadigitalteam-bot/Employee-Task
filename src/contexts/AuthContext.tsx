@@ -14,10 +14,31 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 const SESSION_KEY = "ews_session";
 const SESSION_TOKEN_KEY = "ews_token";
+const REQUEST_TIMEOUT_MS = 20000;
+
+function readCachedEmployee(): Employee | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? (JSON.parse(raw) as Employee) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [employee, setEmployee] = useState<Employee | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Restore the cached session synchronously so the app renders immediately
+  const [employee, setEmployee] = useState<Employee | null>(readCachedEmployee);
+  const [isLoading, setIsLoading] = useState(false);
 
   const clearSession = useCallback(() => {
     localStorage.removeItem(SESSION_KEY);
@@ -30,27 +51,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const storedToken = localStorage.getItem(SESSION_TOKEN_KEY);
 
     if (!storedEmployee || !storedToken) {
-      clearSession();
-      setIsLoading(false);
+      setEmployee(readCachedEmployee());
       return;
     }
 
+    setIsLoading(true);
     try {
       const emp = JSON.parse(storedEmployee) as Employee;
-      const response = await fetch(`${EDGE_FUNCTION_BASE}/validate-session`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      const response = await fetchWithTimeout(
+        `${EDGE_FUNCTION_BASE}/validate-session`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            session_token: storedToken,
+            employee_id: emp.id,
+          }),
         },
-        body: JSON.stringify({
-          session_token: storedToken,
-          employee_id: emp.id,
-        }),
-      });
+        REQUEST_TIMEOUT_MS
+      );
+
+      // Only log the user out when the server explicitly rejects the session.
+      // Network errors / timeouts / 5xx keep the cached session so the app stays usable.
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403 || response.status === 404) {
+          clearSession();
+        }
+        return;
+      }
 
       const data = await response.json();
-
       if (data.valid && data.employee) {
         setEmployee(data.employee);
         localStorage.setItem(SESSION_KEY, JSON.stringify(data.employee));
@@ -58,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearSession();
       }
     } catch {
-      clearSession();
+      // Keep the cached session on network failure or timeout.
     } finally {
       setIsLoading(false);
     }
@@ -70,17 +103,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (employeeCode: string, pin: string) => {
     try {
-      const response = await fetch(`${EDGE_FUNCTION_BASE}/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      const response = await fetchWithTimeout(
+        `${EDGE_FUNCTION_BASE}/login`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            employee_code: employeeCode,
+            pin,
+          }),
         },
-        body: JSON.stringify({
-          employee_code: employeeCode,
-          pin,
-        }),
-      });
+        REQUEST_TIMEOUT_MS
+      );
 
       const data = await response.json();
 

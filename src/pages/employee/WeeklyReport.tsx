@@ -19,7 +19,7 @@ import type { WeeklyTask } from "@/types/database";
 
 export default function WeeklyReportPage() {
   const { employee } = useAuth();
-  const { report: activeReport, tasks: activeTasks, loading, refresh } = useActiveWeek(employee);
+  const { report: activeReport, tasks: activeTasks, loading, error, refresh, retry } = useActiveWeek(employee);
   const [tasks, setTasks] = useState<WeeklyTask[]>([]);
   const [completedTasks, setCompletedTasks] = useState<WeeklyTask[]>([]);
   const [notes, setNotes] = useState("");
@@ -472,6 +472,17 @@ export default function WeeklyReportPage() {
           </div>
         )}
           </>
+        ) : error ? (
+          <Card>
+            <CardContent className="py-14 text-center space-y-4">
+              <p className="text-sm font-medium">Couldn't load your weekly report</p>
+              <p className="text-sm text-muted-foreground max-w-sm mx-auto">{error}</p>
+              <Button variant="outline" onClick={retry} className="gap-1.5">
+                <RotateCcw className="h-3 w-3" />
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
         ) : (
           <Card>
             <CardContent className="py-14 text-center space-y-4">

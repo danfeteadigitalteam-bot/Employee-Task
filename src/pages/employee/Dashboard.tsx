@@ -6,9 +6,10 @@ import { useActiveWeek } from "@/hooks/useActiveWeek";
 import { supabase } from "@/lib/supabase";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { NewWeekButton } from "@/components/shared/NewWeekButton";
-import { Building2, Calendar, ListChecks, FileText, ChevronRight, ClipboardList, Link2, CheckCircle2, ListTodo } from "lucide-react";
+import { Building2, Calendar, ListChecks, FileText, ChevronRight, ClipboardList, Link2, CheckCircle2, ListTodo, RotateCcw } from "lucide-react";
 import type { WeeklyTask } from "@/types/database";
 
 function getGreeting() {
@@ -20,7 +21,7 @@ function getGreeting() {
 
 export default function EmployeeDashboard() {
   const { employee } = useAuth();
-  const { report, tasks, loading, refresh } = useActiveWeek(employee);
+  const { report, tasks, loading, error, refresh, retry } = useActiveWeek(employee);
   const [recentReports, setRecentReports] = useState<{ week_start: string; week_end: string; status: string }[]>([]);
 
   useEffect(() => {
@@ -156,6 +157,15 @@ export default function EmployeeDashboard() {
               <div className="h-4 bg-muted/60 rounded animate-pulse" />
               <div className="h-4 bg-muted/60 rounded animate-pulse" />
               <div className="h-4 bg-muted/60 rounded animate-pulse" />
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center text-center py-8">
+              <p className="text-sm font-medium">Couldn't load your checklist</p>
+              <p className="text-sm text-muted-foreground mt-1">{error}</p>
+              <Button variant="outline" size="sm" onClick={retry} className="mt-3 gap-1.5">
+                <RotateCcw className="h-3 w-3" />
+                Retry
+              </Button>
             </div>
           ) : tasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center text-center py-8">
