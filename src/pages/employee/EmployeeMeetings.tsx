@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
-import { useWeek } from "@/hooks/useWeek";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +17,6 @@ import type { Meeting, MeetingTask } from "@/types/database";
 
 export default function EmployeeMeetings() {
   const { employee } = useAuth();
-  const week = useWeek();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [, setLoading] = useState(true);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
@@ -122,7 +120,7 @@ export default function EmployeeMeetings() {
         source: "employee",
         status: "draft",
         is_checked: false,
-        assigned_week_start: week.weekStartStr,
+        assigned_week_start: selectedMeeting.week_start,
       })
       .select("*")
       .single();
@@ -200,27 +198,27 @@ export default function EmployeeMeetings() {
 
     await Promise.all([saveNotesPromise, markTasksPromise]);
 
-    // Find or create report
+    // Find or create report for the meeting's week
     let reportId: string | null = null;
+    const targetWeekStart = selectedMeeting.week_start;
+    const targetWeekEnd = selectedMeeting.week_end;
     const { data: existingReport } = await supabase
       .from("weekly_reports")
       .select("id")
       .eq("employee_id", employee.id)
-      .eq("week_start", week.weekStartStr)
+      .eq("week_start", targetWeekStart)
       .maybeSingle();
 
     if (existingReport) {
       reportId = existingReport.id;
     } else {
-      const weekEnd = new Date(week.weekStartStr);
-      weekEnd.setDate(weekEnd.getDate() + 6);
       const { data: newReport } = await supabase
         .from("weekly_reports")
         .insert({
           employee_id: employee.id,
           department_id: employee.department_id,
-          week_start: week.weekStartStr,
-          week_end: weekEnd.toISOString().split("T")[0],
+          week_start: targetWeekStart,
+          week_end: targetWeekEnd,
           status: "draft",
         })
         .select("id")

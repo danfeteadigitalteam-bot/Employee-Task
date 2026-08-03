@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import { deleteReport } from "@/lib/weekService";
 import { useWeek } from "@/hooks/useWeek";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { NewWeekButton } from "@/components/shared/NewWeekButton";
 import {
   Select,
   SelectContent,
@@ -17,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Eye, RotateCcw, ChevronLeft, ChevronRight, FileText, AlertCircle } from "lucide-react";
+import { Eye, RotateCcw, ChevronLeft, ChevronRight, FileText, AlertCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { addWeeks, subWeeks } from "date-fns";
 import type { WeeklyReport, WeeklyTask, Employee, Department } from "@/types/database";
@@ -46,6 +48,7 @@ export default function AdminReports() {
   const [selectedReport, setSelectedReport] = useState<ReportWithEmployee | null>(null);
   const [reportTasks, setReportTasks] = useState<WeeklyTask[]>([]);
   const [reopeningReport, setReopeningReport] = useState<ReportWithEmployee | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ReportWithEmployee | null>(null);
 
   const now = new Date();
   const [weekOffset, setWeekOffset] = useState(0);
@@ -107,6 +110,19 @@ export default function AdminReports() {
     } else {
       toast.error("Failed to reopen report");
     }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteReport(deleteTarget.id);
+      toast.success("Report deleted");
+      setReports((prev) => prev.filter((r) => r.id !== deleteTarget.id));
+      if (selectedReport?.id === deleteTarget.id) setSelectedReport(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete report");
+    }
+    setDeleteTarget(null);
   };
 
   return (
@@ -181,6 +197,21 @@ export default function AdminReports() {
                       {report.status === "submitted" && (
                         <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setReopeningReport(report)}>
                           <RotateCcw className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <NewWeekButton
+                        employee={{ id: report.employee_id, department_id: report.department_id } as Employee}
+                        compact
+                        onStarted={() => fetchData()}
+                      />
+                      {report.status === "draft" && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                          onClick={() => setDeleteTarget(report)}
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       )}
                     </div>
@@ -287,6 +318,16 @@ export default function AdminReports() {
         description="This will allow the employee to edit their report again. Are you sure?"
         confirmLabel="Reopen"
         onConfirm={handleReopen}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Delete Report"
+        description={`Are you sure you want to delete this draft report${deleteTarget?.employee?.full_name ? ` for ${deleteTarget.employee.full_name}` : ""}? This will also remove all its tasks. This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={handleDelete}
       />
     </PageLayout>
   );

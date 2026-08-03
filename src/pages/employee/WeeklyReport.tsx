@@ -1,7 +1,8 @@
 //C:\Users\ACER\Desktop\NTE Loyalty\Employee Workspace\src\pages\employee\WeeklyReport.tsx
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useWeek } from "@/hooks/useWeek";
+import { useActiveWeek } from "@/hooks/useActiveWeek";
+import { formatWeekRange } from "@/hooks/useWeek";
 import { supabase } from "@/lib/supabase";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,18 +12,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { NewWeekButton } from "@/components/shared/NewWeekButton";
 import { Plus, Pencil, Trash2, Check, X, Send, RotateCcw, ListTodo, CheckCircle2, NotebookPen, Link2, Lock } from "lucide-react";
 import { toast } from "sonner";
-import type { WeeklyReport, WeeklyTask } from "@/types/database";
+import type { WeeklyTask } from "@/types/database";
 
 export default function WeeklyReportPage() {
   const { employee } = useAuth();
-  const week = useWeek();
-  const [report, setReport] = useState<WeeklyReport | null>(null);
+  const { report: activeReport, tasks: activeTasks, loading, refresh } = useActiveWeek(employee);
   const [tasks, setTasks] = useState<WeeklyTask[]>([]);
   const [completedTasks, setCompletedTasks] = useState<WeeklyTask[]>([]);
   const [notes, setNotes] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [notesLoaded, setNotesLoaded] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
@@ -32,63 +33,22 @@ export default function WeeklyReportPage() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTaskText, setEditingTaskText] = useState("");
 
+  const report = activeReport;
   const isReadOnly = report?.status === "submitted";
 
-  const fetchReport = useCallback(async () => {
-    if (!employee) return;
-
-    const { data: reportData } = await supabase
-      .from("weekly_reports")
-      .select("*")
-      .eq("employee_id", employee.id)
-      .eq("week_start", week.weekStartStr)
-      .maybeSingle();
-
-    if (reportData) {
-      setReport(reportData as WeeklyReport);
-      setNotes((reportData as any).notes || "");
-
-      const { data: tasksData } = await supabase
-        .from("weekly_tasks")
-        .select("*")
-        .eq("report_id", reportData.id)
-        .order("sort_order");
-
-      if (tasksData) {
-        setTasks(tasksData.filter((t: any) => t.task_type === "planned"));
-        setCompletedTasks(tasksData.filter((t: any) => t.task_type === "completed"));
-      }
-    } else {
-      // Create new report
-      const { data: newReport, error: createError } = await supabase
-        .from("weekly_reports")
-        .insert({
-          employee_id: employee.id,
-          department_id: employee.department_id,
-          week_start: week.weekStartStr,
-          week_end: week.weekEndStr,
-          status: "draft",
-        })
-        .select()
-        .single();
-
-      if (newReport) {
-        setReport(newReport as WeeklyReport);
-      } else {
-        console.error("Failed to create report:", createError);
-        toast.error("Failed to create report: " + (createError?.message || "Unknown error"));
-      }
-    }
-    setLoading(false);
-    setNotesLoaded(true);
-  }, [employee, week.weekStartStr, week.weekEndStr]);
-
+  // Sync local state from the active week
   useEffect(() => {
-    fetchReport();
-  }, [fetchReport]);
-
-  // Autosave notes - skip initial mount
-  const [notesLoaded, setNotesLoaded] = useState(false);
+    if (!activeReport) {
+      setTasks([]);
+      setCompletedTasks([]);
+      setNotes("");
+      return;
+    }
+    setNotes(activeReport.notes || "");
+    setNotesLoaded(true);
+    setTasks(activeTasks.filter((t) => t.task_type === "planned"));
+    setCompletedTasks(activeTasks.filter((t) => t.task_type === "completed"));
+  }, [activeReport, activeTasks]);
 
   const saveNotes = useCallback(async () => {
     if (!report || isReadOnly || !notesLoaded) return;
@@ -210,7 +170,7 @@ export default function WeeklyReportPage() {
       .eq("id", report.id);
 
     if (!error) {
-      setReport({ ...report, status: "draft", submitted_at: null });
+      refresh();
       toast.success("Report reset to draft");
     } else {
       toast.error("Failed to reset report");
@@ -232,7 +192,7 @@ export default function WeeklyReportPage() {
     setShowSubmitConfirm(false);
 
     if (!error) {
-      setReport({ ...report, status: "submitted", submitted_at: new Date().toISOString() });
+      refresh();
       toast.success("Weekly report submitted successfully!");
     } else {
       toast.error("Failed to submit report");
@@ -256,10 +216,17 @@ export default function WeeklyReportPage() {
   return (
     <PageLayout
       title="This Week's Report"
-      description={week.displayRange}
-      actions={report ? <StatusBadge status={report.status} /> : undefined}
+      description={report ? formatWeekRange(report.week_start, report.week_end) : "No active week yet"}
+      actions={
+        <div className="flex items-center gap-2">
+          {report && <StatusBadge status={report.status} />}
+          {employee && <NewWeekButton employee={employee} onStarted={refresh} />}
+        </div>
+      }
     >
       <div className="space-y-6">
+        {report ? (
+          <>
         {isReadOnly && (
           <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
             <Lock className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -503,6 +470,24 @@ export default function WeeklyReportPage() {
               Reset to Draft
             </Button>
           </div>
+        )}
+          </>
+        ) : (
+          <Card>
+            <CardContent className="py-14 text-center space-y-4">
+              <div className="inline-flex p-3 bg-accent rounded-full">
+                <ListTodo className="h-5 w-5 text-accent-foreground" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">No active week yet</p>
+                <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
+                  Click "New Week" to start your weekly checklist, or wait for tasks discussed in Sunday's meeting to be
+                  added.
+                </p>
+              </div>
+              {employee && <NewWeekButton employee={employee} onStarted={refresh} />}
+            </CardContent>
+          </Card>
         )}
       </div>
 

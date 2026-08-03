@@ -2,13 +2,16 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { deleteReport } from "@/lib/weekService";
 import { formatWeekRange } from "@/hooks/useWeek";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { Eye, Calendar, FileText } from "lucide-react";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { Eye, Calendar, FileText, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { toast } from "sonner";
 import type { WeeklyReport, WeeklyTask } from "@/types/database";
 
 export default function PreviousReports() {
@@ -16,6 +19,7 @@ export default function PreviousReports() {
   const [reports, setReports] = useState<WeeklyReport[]>([]);
   const [selectedReport, setSelectedReport] = useState<WeeklyReport | null>(null);
   const [reportTasks, setReportTasks] = useState<WeeklyTask[]>([]);
+  const [deleteTarget, setDeleteTarget] = useState<WeeklyReport | null>(null);
 
   useEffect(() => {
     if (!employee) return;
@@ -42,6 +46,19 @@ export default function PreviousReports() {
 
     if (data) setReportTasks(data as WeeklyTask[]);
     setSelectedReport(report);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteReport(deleteTarget.id);
+      toast.success("Report deleted");
+      setReports((prev) => prev.filter((r) => r.id !== deleteTarget.id));
+      if (selectedReport?.id === deleteTarget.id) setSelectedReport(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete report");
+    }
+    setDeleteTarget(null);
   };
 
   return (
@@ -80,6 +97,16 @@ export default function PreviousReports() {
                     <Eye className="h-3.5 w-3.5" />
                     View
                   </Button>
+                  {report.status === "draft" && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                      onClick={() => setDeleteTarget(report)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -154,6 +181,16 @@ export default function PreviousReports() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Delete Report"
+        description={`Are you sure you want to delete the report for ${deleteTarget ? formatWeekRange(deleteTarget.week_start, deleteTarget.week_end) : ""}? This will also remove all its tasks. This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={handleDelete}
+      />
     </PageLayout>
   );
 }

@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Pencil, RotateCcw, UserPlus, Trash2, Users } from "lucide-react";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { NewWeekButton } from "@/components/shared/NewWeekButton";
 import { toast } from "sonner";
 import type { Employee, Department } from "@/types/database";
 
@@ -309,6 +310,7 @@ export default function AdminEmployees() {
                           >
                             {emp.is_active ? "Deactivate" : "Activate"}
                           </Button>
+                          <NewWeekButton employee={emp} compact onStarted={() => fetchData()} />
                           <Button
                             size="icon"
                             variant="ghost"
