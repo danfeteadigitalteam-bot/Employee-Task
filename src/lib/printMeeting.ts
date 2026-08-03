@@ -24,6 +24,7 @@ export async function printMeetingMinutes(title: string, date: string, contentHt
 <html>
 <head><meta charset="utf-8"><title>${title}</title>
 <style>
+  @page { size: A4; margin: 0; }
   body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
   .letterhead { text-align: center; border-bottom: 2px solid #1a1a1a; padding-bottom: 1.25rem; margin-bottom: 1.5rem; }
   .letterhead img { max-height: 160px; max-width: 240px; object-fit: contain; }
@@ -38,7 +39,7 @@ export async function printMeetingMinutes(title: string, date: string, contentHt
   .discussion, .decision { font-size: 0.875rem; white-space: pre-wrap; background: #f5f5f5; padding: 0.75rem; border-radius: 4px; margin-bottom: 0.5rem; }
   .label { font-size: 0.75rem; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
   .section { margin-bottom: 1.5rem; }
-  @media print { body { margin: 0.5in; } }
+  @media print { body { margin: 0; padding: 0.5in; } }
 </style></head>
 <body>
   <div class="letterhead">
