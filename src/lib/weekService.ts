@@ -26,6 +26,7 @@ export async function fetchLatestMeeting(): Promise<Meeting | null> {
   const { data } = await supabase
     .from("meetings")
     .select("week_start, week_end")
+    .eq("company", "nte")
     .order("meeting_date", { ascending: false })
     .limit(1)
     .maybeSingle();

@@ -18,6 +18,7 @@ const AdminDepartments = lazy(() => import("@/pages/admin/Departments"));
 const AdminReports = lazy(() => import("@/pages/admin/Reports"));
 const AdminAgenda = lazy(() => import("@/pages/admin/Agenda"));
 const AdminMeetings = lazy(() => import("@/pages/admin/Meetings"));
+const AdminDanfeMeetings = lazy(() => import("@/pages/admin/DanfeMeetings"));
 const MeetingDetail = lazy(() => import("@/pages/admin/MeetingDetail"));
 
 function PageLoader() {
@@ -94,6 +95,7 @@ function AppRoutes() {
       <Route path="/admin/agenda" element={<ProtectedRoute allowedRole="admin"><AdminAgenda /></ProtectedRoute>} />
       <Route path="/admin/meetings" element={<ProtectedRoute allowedRole="admin"><AdminMeetings /></ProtectedRoute>} />
       <Route path="/admin/meetings/:id" element={<ProtectedRoute allowedRole="admin"><MeetingDetail /></ProtectedRoute>} />
+      <Route path="/admin/danfe" element={<ProtectedRoute allowedRole="admin"><AdminDanfeMeetings /></ProtectedRoute>} />
 
       {/* Default redirect */}
       <Route path="*" element={<Navigate to="/login" replace />} />

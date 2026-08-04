@@ -13,6 +13,7 @@ import { BookOpen, Plus, Trash2, Send, CheckCircle2, Clock, Download, ChevronRig
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { printMeetingMinutes } from "@/lib/printMeeting";
+import { CompanyBadge } from "@/components/shared/CompanyBadge";
 import type { Meeting, MeetingTask } from "@/types/database";
 
 export default function EmployeeMeetings() {
@@ -38,6 +39,7 @@ export default function EmployeeMeetings() {
       const { data } = await supabase
         .from("meetings")
         .select("*")
+        .or(`company.eq.nte,attendees.cs.{${employee.id}}`)
         .order("meeting_date", { ascending: false });
       if (!cancelled) {
         if (data) setMeetings(data as Meeting[]);
@@ -150,7 +152,11 @@ export default function EmployeeMeetings() {
   };
 
   const deleteTask = async (taskId: string) => {
-    await supabase.from("meeting_tasks").delete().eq("id", taskId);
+    const { error } = await supabase.from("meeting_tasks").delete().eq("id", taskId);
+    if (error) {
+      toast.error("Failed to delete task: " + error.message);
+      return;
+    }
     setMyTasks(myTasks.filter((t) => t.id !== taskId));
   };
 
@@ -198,66 +204,71 @@ export default function EmployeeMeetings() {
 
     await Promise.all([saveNotesPromise, markTasksPromise]);
 
-    // Find or create report for the meeting's week
-    let reportId: string | null = null;
-    const targetWeekStart = selectedMeeting.week_start;
-    const targetWeekEnd = selectedMeeting.week_end;
-    const { data: existingReport } = await supabase
-      .from("weekly_reports")
-      .select("id")
-      .eq("employee_id", employee.id)
-      .eq("week_start", targetWeekStart)
-      .maybeSingle();
-
-    if (existingReport) {
-      reportId = existingReport.id;
-    } else {
-      const { data: newReport } = await supabase
+    // Only Danfe meetings skip the weekly report copy; NTE meeting tasks
+    // are copied into the employee's weekly report so they appear on "This Week".
+    if (selectedMeeting.company === "nte") {
+      // Find or create report for the meeting's week
+      let reportId: string | null = null;
+      const targetWeekStart = selectedMeeting.week_start;
+      const targetWeekEnd = selectedMeeting.week_end;
+      const { data: existingReport } = await supabase
         .from("weekly_reports")
-        .insert({
-          employee_id: employee.id,
-          department_id: employee.department_id,
-          week_start: targetWeekStart,
-          week_end: targetWeekEnd,
-          status: "draft",
-        })
         .select("id")
-        .maybeSingle();
-      reportId = newReport?.id || null;
-    }
-
-    // Batch insert all tasks in one query
-    if (reportId && myTasks.length > 0) {
-      const { data: existingTasks } = await supabase
-        .from("weekly_tasks")
-        .select("task_text")
         .eq("employee_id", employee.id)
-        .eq("source", "meeting");
+        .eq("week_start", targetWeekStart)
+        .maybeSingle();
 
-      const existingTexts = new Set((existingTasks || []).map((t: any) => t.task_text));
-      const newTasks = myTasks.filter((t) => !existingTexts.has(t.task_text));
-
-      if (newTasks.length > 0) {
-        const { data: maxOrderRow } = await supabase
-          .from("weekly_tasks")
-          .select("sort_order")
-          .eq("report_id", reportId)
-          .order("sort_order", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        let sortBase = (maxOrderRow?.sort_order ?? -1) + 1;
-
-        await supabase.from("weekly_tasks").insert(
-          newTasks.map((task, i) => ({
-            report_id: reportId,
+      if (existingReport) {
+        reportId = existingReport.id;
+      } else {
+        const { data: newReport } = await supabase
+          .from("weekly_reports")
+          .insert({
             employee_id: employee.id,
-            task_type: task.is_checked ? "completed" : "planned",
-            task_text: task.task_text,
-            source: "meeting",
-            sort_order: sortBase + i,
-          }))
-        );
+            department_id: employee.department_id,
+            week_start: targetWeekStart,
+            week_end: targetWeekEnd,
+            status: "draft",
+          })
+          .select("id")
+          .maybeSingle();
+        reportId = newReport?.id || null;
+      }
+
+      // Batch insert all tasks in one query
+      if (reportId && myTasks.length > 0) {
+        const { data: existingTasks } = await supabase
+          .from("weekly_tasks")
+          .select("task_text")
+          .eq("employee_id", employee.id)
+          .eq("source", "meeting");
+
+        const existingTexts = new Set((existingTasks || []).map((t: any) => t.task_text));
+        const newTasks = myTasks.filter((t) => !existingTexts.has(t.task_text));
+
+        if (newTasks.length > 0) {
+          const { data: maxOrderRow } = await supabase
+            .from("weekly_tasks")
+            .select("sort_order")
+            .eq("report_id", reportId)
+            .order("sort_order", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          let sortBase = (maxOrderRow?.sort_order ?? -1) + 1;
+
+          await supabase.from("weekly_tasks").insert(
+            newTasks.map((task, i) => ({
+              report_id: reportId,
+              employee_id: employee.id,
+              task_type: task.is_checked ? "completed" : "planned",
+              task_text: task.task_text,
+              source: "meeting",
+              company: selectedMeeting.company,
+              sort_order: sortBase + i,
+            }))
+          );
+        }
       }
     }
 
@@ -305,7 +316,7 @@ export default function EmployeeMeetings() {
       contentHtml += `</div>`;
     }
 
-    printMeetingMinutes(selectedMeeting.title, dateStr, contentHtml);
+    printMeetingMinutes(selectedMeeting.title, dateStr, contentHtml, selectedMeeting.company);
   };
 
   return (
@@ -346,6 +357,7 @@ export default function EmployeeMeetings() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  <CompanyBadge company={meeting.company} />
                   <Badge
                     variant={meeting.status === "published" ? "default" : "outline"}
                     className="text-xs"
@@ -455,47 +467,49 @@ export default function EmployeeMeetings() {
                   </Card>
                 )}
 
-                {/* Discussion & Decisions */}
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                        Discussion & Decisions
-                      </CardTitle>
-                      {hasSubmitted && (
-                        <Badge variant="default" className="gap-1">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Submitted
-                        </Badge>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-muted-foreground">What was discussed in the meeting?</label>
-                      <Textarea
-                        placeholder="Write down what was discussed..."
-                        value={discussion}
-                        onChange={(e) => setDiscussion(e.target.value)}
-                        rows={3}
-                        disabled={hasSubmitted}
-                        className="resize-none"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-muted-foreground">What decisions were made?</label>
-                      <Textarea
-                        placeholder="Write down any decisions..."
-                        value={decisions}
-                        onChange={(e) => setDecisions(e.target.value)}
-                        rows={3}
-                        disabled={hasSubmitted}
-                        className="resize-none"
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
+                {/* Discussion & Decisions (NTE weekly meetings only) */}
+                {selectedMeeting?.company !== "danfe" && (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                          Discussion & Decisions
+                        </CardTitle>
+                        {hasSubmitted && (
+                          <Badge variant="default" className="gap-1">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Submitted
+                          </Badge>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground">What was discussed in the meeting?</label>
+                        <Textarea
+                          placeholder="Write down what was discussed..."
+                          value={discussion}
+                          onChange={(e) => setDiscussion(e.target.value)}
+                          rows={3}
+                          disabled={hasSubmitted}
+                          className="resize-none"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground">What decisions were made?</label>
+                        <Textarea
+                          placeholder="Write down any decisions..."
+                          value={decisions}
+                          onChange={(e) => setDecisions(e.target.value)}
+                          rows={3}
+                          disabled={hasSubmitted}
+                          className="resize-none"
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* Employee's own tasks */}
                 <Card>

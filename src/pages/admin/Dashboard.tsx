@@ -37,7 +37,8 @@ export default function AdminDashboard() {
         .from("employees")
         .select("*, departments(name)")
         .eq("is_active", true)
-        .neq("role", "admin");
+        .neq("role", "admin")
+        .contains("companies", ["nte"]);
 
       if (employees) {
         setTotalEmployees(employees.length);

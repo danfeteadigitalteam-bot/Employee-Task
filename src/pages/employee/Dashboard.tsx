@@ -7,10 +7,11 @@ import { supabase } from "@/lib/supabase";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { NewWeekButton } from "@/components/shared/NewWeekButton";
-import { Building2, Calendar, ListChecks, FileText, ChevronRight, ClipboardList, Link2, CheckCircle2, ListTodo, RotateCcw } from "lucide-react";
-import type { WeeklyTask } from "@/types/database";
+import { Building2, Calendar, ListChecks, FileText, ChevronRight, ClipboardList, Link2, CheckCircle2, ListTodo, RotateCcw, Coffee } from "lucide-react";
+import type { WeeklyTask, Meeting, MeetingTask } from "@/types/database";
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -23,9 +24,48 @@ export default function EmployeeDashboard() {
   const { employee } = useAuth();
   const { report, tasks, loading, error, refresh, retry } = useActiveWeek(employee);
   const [recentReports, setRecentReports] = useState<{ week_start: string; week_end: string; status: string }[]>([]);
+  const [danfeMeetings, setDanfeMeetings] = useState<{ meeting: Meeting; tasks: MeetingTask[] }[]>([]);
 
   useEffect(() => {
     if (!employee) return;
+
+    const fetchDanfe = async () => {
+      const { data: meetings } = await supabase
+        .from("meetings")
+        .select("*")
+        .eq("company", "danfe")
+        .contains("attendees", [employee.id])
+        .order("meeting_date", { ascending: false });
+
+      if (!meetings || meetings.length === 0) {
+        setDanfeMeetings([]);
+        return;
+      }
+
+      const { data: meetingTasks } = await supabase
+        .from("meeting_tasks")
+        .select("*")
+        .in("meeting_id", meetings.map((m) => m.id))
+        .eq("employee_id", employee.id)
+        .eq("status", "submitted")
+        .order("created_at");
+
+      const taskMap = new Map<string, MeetingTask[]>();
+      for (const task of meetingTasks || []) {
+        const list = taskMap.get(task.meeting_id) || [];
+        list.push(task);
+        taskMap.set(task.meeting_id, list);
+      }
+
+      setDanfeMeetings(
+        (meetings as Meeting[]).map((meeting) => ({
+          meeting,
+          tasks: taskMap.get(meeting.id) || [],
+        }))
+      );
+    };
+
+    fetchDanfe();
 
     const fetchRecent = async () => {
       const { data: recentData } = await supabase
@@ -61,8 +101,24 @@ export default function EmployeeDashboard() {
           Meeting
         </span>
       )}
+      {task.company === "danfe" && (
+        <span className="inline-flex items-center gap-1 text-xs bg-green-50 text-green-600 px-1.5 py-0.5 rounded-md shrink-0">
+          Danfe Tea
+        </span>
+      )}
     </div>
   );
+
+  const toggleDanfeTask = async (task: MeetingTask) => {
+    const newChecked = !task.is_checked;
+    await supabase.from("meeting_tasks").update({ is_checked: newChecked }).eq("id", task.id);
+    setDanfeMeetings((prev) =>
+      prev.map(({ meeting, tasks }) => ({
+        meeting,
+        tasks: tasks.map((t) => (t.id === task.id ? { ...t, is_checked: newChecked } : t)),
+      }))
+    );
+  };
 
   return (
     <PageLayout
@@ -203,6 +259,11 @@ export default function EmployeeDashboard() {
                             Meeting
                           </span>
                         )}
+                        {t.company === "danfe" && (
+                          <span className="inline-flex items-center gap-1 text-xs bg-green-50 text-green-600 px-1.5 py-0.5 rounded-md shrink-0">
+                            Danfe Tea
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -212,6 +273,58 @@ export default function EmployeeDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Danfe Task */}
+      {danfeMeetings.some((d) => d.tasks.length > 0) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Coffee className="h-4 w-4 text-green-600" />
+              Danfe Task
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {danfeMeetings.map(({ meeting, tasks }) => {
+              if (tasks.length === 0) return null;
+              return (
+                <div key={meeting.id}>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase">{meeting.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(meeting.meeting_date).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </p>
+                  </div>
+                  <div className="divide-y divide-border/60">
+                    {tasks.map((task) => (
+                      <div key={task.id} className="flex items-start gap-3 py-1.5 -mx-2 px-2 rounded-lg">
+                        <Checkbox
+                          checked={task.is_checked}
+                          onCheckedChange={() => toggleDanfeTask(task)}
+                          className="mt-0.5"
+                        />
+                        <span className={`text-sm flex-1 ${task.is_checked ? "line-through text-muted-foreground" : ""}`}>
+                          {task.task_text}
+                        </span>
+                        {task.source === "admin" && (
+                          <span className="inline-flex items-center gap-1 text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded-md shrink-0">
+                            Admin
+                          </span>
+                        )}
+                        <span className="inline-flex items-center gap-1 text-xs bg-green-50 text-green-600 px-1.5 py-0.5 rounded-md shrink-0">
+                          Danfe Tea
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Recent Reports */}
       <Card>

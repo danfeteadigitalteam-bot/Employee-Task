@@ -11,6 +11,7 @@ import {
   BookOpen,
   LogOut,
   User,
+  Coffee,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ const adminLinks = [
   { to: "/admin/reports", label: "Reports", icon: BarChart3 },
   { to: "/admin/agenda", label: "Meeting Agenda", icon: Calendar },
   { to: "/admin/meetings", label: "Meeting Minutes", icon: BookOpen },
+  { to: "/admin/danfe", label: "Danfe Tea Meetings", icon: Coffee },
 ];
 
 export function Sidebar() {

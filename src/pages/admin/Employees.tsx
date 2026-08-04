@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import {
   Select,
@@ -27,8 +28,9 @@ import {
 import { Pencil, RotateCcw, UserPlus, Trash2, Users } from "lucide-react";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { NewWeekButton } from "@/components/shared/NewWeekButton";
+import { CompanyBadge } from "@/components/shared/CompanyBadge";
 import { toast } from "sonner";
-import type { Employee, Department } from "@/types/database";
+import type { Employee, Department, Company } from "@/types/database";
 
 interface EmployeeWithDept extends Employee {
   departments?: { name: string };
@@ -58,6 +60,7 @@ export default function AdminEmployees() {
   const [formDept, setFormDept] = useState("");
   const [formPin, setFormPin] = useState("");
   const [formRole, setFormRole] = useState<"admin" | "employee">("employee");
+  const [formCompanies, setFormCompanies] = useState<Company[]>(["nte"]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resetPinValue, setResetPinValue] = useState("");
 
@@ -99,6 +102,7 @@ export default function AdminEmployees() {
           department_id: formDept,
           pin_hash: "pending",
           role: formRole,
+          companies: formCompanies,
           is_active: true,
           must_change_pin: true,
         })
@@ -154,6 +158,7 @@ export default function AdminEmployees() {
         full_name: formName.trim(),
         department_id: formDept,
         role: formRole,
+        companies: formCompanies,
       })
       .eq("id", editingEmployee.id);
 
@@ -230,6 +235,7 @@ export default function AdminEmployees() {
     setFormDept("");
     setFormPin("");
     setFormRole("employee");
+    setFormCompanies(["nte"]);
   };
 
   const openEditDialog = (emp: EmployeeWithDept) => {
@@ -237,7 +243,14 @@ export default function AdminEmployees() {
     setFormCode(emp.employee_code);
     setFormDept(emp.department_id);
     setFormRole(emp.role);
+    setFormCompanies(emp.companies && emp.companies.length > 0 ? emp.companies : ["nte"]);
     setEditingEmployee(emp);
+  };
+
+  const toggleCompany = (company: Company) => {
+    setFormCompanies((prev) =>
+      prev.includes(company) ? prev.filter((c) => c !== company) : [...prev, company]
+    );
   };
 
   return (
@@ -268,6 +281,7 @@ export default function AdminEmployees() {
                   <tr className="border-b border-border bg-muted/40">
                     <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Employee</th>
                     <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Department</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Company</th>
                     <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Role</th>
                     <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Status</th>
                     <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Actions</th>
@@ -288,6 +302,13 @@ export default function AdminEmployees() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">{(emp as any).departments?.name || "—"}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {(emp.companies && emp.companies.length > 0 ? emp.companies : (["nte"] as Company[])).map((c) => (
+                            <CompanyBadge key={c} company={c} />
+                          ))}
+                        </div>
+                      </td>
                       <td className="px-4 py-3">
                         <Badge variant="outline" className="text-xs capitalize">{emp.role}</Badge>
                       </td>
@@ -359,6 +380,27 @@ export default function AdminEmployees() {
               </Select>
             </div>
             <div className="space-y-2">
+              <Label>Companies</Label>
+              <div className="flex flex-col gap-2 rounded-lg border border-border/70 bg-muted/20 p-3">
+                <label className="flex items-center gap-2.5 text-sm font-medium">
+                  <Checkbox
+                    checked={formCompanies.includes("nte")}
+                    onCheckedChange={() => toggleCompany("nte")}
+                    disabled={isSubmitting}
+                  />
+                  NTE Loyalty
+                </label>
+                <label className="flex items-center gap-2.5 text-sm font-medium">
+                  <Checkbox
+                    checked={formCompanies.includes("danfe")}
+                    onCheckedChange={() => toggleCompany("danfe")}
+                    disabled={isSubmitting}
+                  />
+                  Danfe Tea
+                </label>
+              </div>
+            </div>
+            <div className="space-y-2">
               <Label>Role</Label>
               <Select value={formRole} onValueChange={(v) => setFormRole((v ?? "employee") as "admin" | "employee")} disabled={isSubmitting}>
                 <SelectTrigger>
@@ -418,6 +460,27 @@ export default function AdminEmployees() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Companies</Label>
+              <div className="flex flex-col gap-2 rounded-lg border border-border/70 bg-muted/20 p-3">
+                <label className="flex items-center gap-2.5 text-sm font-medium">
+                  <Checkbox
+                    checked={formCompanies.includes("nte")}
+                    onCheckedChange={() => toggleCompany("nte")}
+                    disabled={isSubmitting}
+                  />
+                  NTE Loyalty
+                </label>
+                <label className="flex items-center gap-2.5 text-sm font-medium">
+                  <Checkbox
+                    checked={formCompanies.includes("danfe")}
+                    onCheckedChange={() => toggleCompany("danfe")}
+                    disabled={isSubmitting}
+                  />
+                  Danfe Tea
+                </label>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Role</Label>

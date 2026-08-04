@@ -1,3 +1,5 @@
+export type Company = "nte" | "danfe";
+
 export interface Department {
   id: string;
   name: string;
@@ -13,6 +15,7 @@ export interface Employee {
   role: "admin" | "employee";
   is_active: boolean;
   must_change_pin: boolean;
+  companies: Company[];
   created_at: string;
   updated_at: string;
   department?: Department;
@@ -49,6 +52,7 @@ export interface WeeklyTask {
   task_text: string;
   is_checked: boolean;
   source: "employee" | "meeting";
+  company: Company;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -66,6 +70,8 @@ export interface Meeting {
   status: "draft" | "published";
   published_at: string | null;
   created_by: string;
+  company: Company;
+  employee_id: string | null;
   created_at: string;
   updated_at: string;
   department_notes?: MeetingDepartmentNote[];

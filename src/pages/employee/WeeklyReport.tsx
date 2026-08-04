@@ -13,9 +13,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { NewWeekButton } from "@/components/shared/NewWeekButton";
-import { Plus, Pencil, Trash2, Check, X, Send, RotateCcw, ListTodo, CheckCircle2, NotebookPen, Link2, Lock } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, X, Send, RotateCcw, ListTodo, CheckCircle2, NotebookPen, Link2, Lock, Coffee } from "lucide-react";
 import { toast } from "sonner";
-import type { WeeklyTask } from "@/types/database";
+import type { WeeklyTask, Meeting, MeetingTask } from "@/types/database";
 
 export default function WeeklyReportPage() {
   const { employee } = useAuth();
@@ -26,6 +26,7 @@ export default function WeeklyReportPage() {
   const [notesLoaded, setNotesLoaded] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [danfeMeetings, setDanfeMeetings] = useState<{ meeting: Meeting; tasks: MeetingTask[] }[]>([]);
 
   // Inline editing state
   const [newTaskText, setNewTaskText] = useState("");
@@ -50,6 +51,47 @@ export default function WeeklyReportPage() {
     setCompletedTasks(activeTasks.filter((t) => t.task_type === "completed"));
   }, [activeReport, activeTasks]);
 
+  // Fetch the employee's Danfe meeting checklists (shown separately from the NTE week)
+  useEffect(() => {
+    if (!employee) return;
+    const fetchDanfe = async () => {
+      const { data: meetings } = await supabase
+        .from("meetings")
+        .select("*")
+        .eq("company", "danfe")
+        .contains("attendees", [employee.id])
+        .order("meeting_date", { ascending: false });
+
+      if (!meetings || meetings.length === 0) {
+        setDanfeMeetings([]);
+        return;
+      }
+
+      const { data: meetingTasks } = await supabase
+        .from("meeting_tasks")
+        .select("*")
+        .in("meeting_id", meetings.map((m) => m.id))
+        .eq("employee_id", employee.id)
+        .eq("status", "submitted")
+        .order("created_at");
+
+      const taskMap = new Map<string, MeetingTask[]>();
+      for (const task of meetingTasks || []) {
+        const list = taskMap.get(task.meeting_id) || [];
+        list.push(task);
+        taskMap.set(task.meeting_id, list);
+      }
+
+      setDanfeMeetings(
+        (meetings as Meeting[]).map((meeting) => ({
+          meeting,
+          tasks: taskMap.get(meeting.id) || [],
+        }))
+      );
+    };
+    fetchDanfe();
+  }, [employee]);
+
   const saveNotes = useCallback(async () => {
     if (!report || isReadOnly || !notesLoaded) return;
     await supabase.from("weekly_reports").update({ notes }).eq("id", report.id);
@@ -59,6 +101,18 @@ export default function WeeklyReportPage() {
     const timer = setTimeout(saveNotes, 1000);
     return () => clearTimeout(timer);
   }, [saveNotes]);
+
+  // Toggle a Danfe meeting task's completion (stored on meeting_tasks)
+  const toggleDanfeTask = async (task: MeetingTask) => {
+    const newChecked = !task.is_checked;
+    await supabase.from("meeting_tasks").update({ is_checked: newChecked }).eq("id", task.id);
+    setDanfeMeetings((prev) =>
+      prev.map(({ meeting, tasks }) => ({
+        meeting,
+        tasks: tasks.map((t) => (t.id === task.id ? { ...t, is_checked: newChecked } : t)),
+      }))
+    );
+  };
 
   // Add planned task
   const addTask = async () => {
@@ -72,6 +126,7 @@ export default function WeeklyReportPage() {
         task_type: "planned",
         task_text: newTaskText.trim(),
         source: "employee",
+        company: "nte",
         sort_order: tasks.length,
       })
       .select()
@@ -101,6 +156,7 @@ export default function WeeklyReportPage() {
         task_type: "completed",
         task_text: newCompletedText.trim(),
         source: "employee",
+        company: "nte",
         sort_order: completedTasks.length,
       })
       .select()
@@ -300,6 +356,11 @@ export default function WeeklyReportPage() {
                         Meeting
                       </span>
                     )}
+                    {task.company === "danfe" && (
+                      <span className="inline-flex items-center gap-1 text-xs bg-green-50 text-green-600 px-1.5 py-0.5 rounded-md shrink-0">
+                        Danfe Tea
+                      </span>
+                    )}
                     {!isReadOnly && (
                       <div className="hidden group-hover:flex items-center gap-1 shrink-0">
                         <Button
@@ -390,6 +451,11 @@ export default function WeeklyReportPage() {
                     <span className={`flex-1 text-sm ${task.is_checked ? "line-through text-muted-foreground" : ""}`}>
                       {task.task_text}
                     </span>
+                    {task.company === "danfe" && (
+                      <span className="inline-flex items-center gap-1 text-xs bg-green-50 text-green-600 px-1.5 py-0.5 rounded-md shrink-0">
+                        Danfe Tea
+                      </span>
+                    )}
                     {!isReadOnly && (
                       <div className="hidden group-hover:flex items-center gap-1 shrink-0">
                         <Button
@@ -501,6 +567,60 @@ export default function WeeklyReportPage() {
           </Card>
         )}
       </div>
+
+      {/* Danfe Task */}
+      {danfeMeetings.some((d) => d.tasks.length > 0) && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Coffee className="h-4 w-4 text-green-600" />
+                Danfe Task
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {danfeMeetings.map(({ meeting, tasks }) => {
+                if (tasks.length === 0) return null;
+                return (
+                  <div key={meeting.id}>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase">{meeting.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(meeting.meeting_date).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </p>
+                    </div>
+                    <div className="divide-y divide-border/60">
+                      {tasks.map((task) => (
+                        <div key={task.id} className="flex items-start gap-3 py-1.5 -mx-2 px-2 rounded-lg">
+                          <Checkbox
+                            checked={task.is_checked}
+                            onCheckedChange={() => toggleDanfeTask(task)}
+                            className="mt-0.5"
+                          />
+                          <span className={`text-sm flex-1 ${task.is_checked ? "line-through text-muted-foreground" : ""}`}>
+                            {task.task_text}
+                          </span>
+                          {task.source === "admin" && (
+                            <span className="inline-flex items-center gap-1 text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded-md shrink-0">
+                              Admin
+                            </span>
+                          )}
+                          <span className="inline-flex items-center gap-1 text-xs bg-green-50 text-green-600 px-1.5 py-0.5 rounded-md shrink-0">
+                            Danfe Tea
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <ConfirmDialog
         open={showSubmitConfirm}

@@ -24,6 +24,7 @@ import { Plus, Trash2, Send, ArrowLeft, CheckCircle2, Clock, Download, ListCheck
 import { toast } from "sonner";
 import { useWeek } from "@/hooks/useWeek";
 import { printMeetingMinutes } from "@/lib/printMeeting";
+import { CompanyBadge } from "@/components/shared/CompanyBadge";
 import type { Meeting, MeetingTask, MeetingDepartmentNote, Employee } from "@/types/database";
 
 interface EmployeeTasks {
@@ -74,6 +75,13 @@ export default function MeetingDetail() {
     setMeeting(meetingData as Meeting);
     setOverallMinutes(meetingData.overall_minutes || "");
 
+    // For Danfe Tea meetings, restrict task assignment to the invited employees
+    if (meetingData.company === "danfe") {
+      setNewTaskEmployee("");
+    } else {
+      setNewTaskEmployee("");
+    }
+
     // Parallelize all independent queries
     const [tasksRes, notesRes, empsRes] = await Promise.all([
       supabase
@@ -113,7 +121,13 @@ export default function MeetingDetail() {
     ));
 
     if (notesRes.data) setDepartmentNotes(notesRes.data as any);
-    if (empsRes.data) setAllEmployees(empsRes.data as any);
+    if (empsRes.data) {
+      const emps = empsRes.data as Employee[];
+      const attendeeIds = meetingData.company === "danfe" ? meetingData.attendees || [] : [];
+      const scopedEmps =
+        attendeeIds.length > 0 ? emps.filter((e) => attendeeIds.includes(e.id)) : emps;
+      setAllEmployees(scopedEmps);
+    }
   }, [id]);
 
   useEffect(() => {
@@ -161,50 +175,54 @@ export default function MeetingDetail() {
       .single();
 
     if (data && !error) {
-      // Also copy to weekly_tasks so it appears in employee's weekly report
-      const { data: existingReport } = await supabase
-        .from("weekly_reports")
-        .select("id")
-        .eq("employee_id", emp.id)
-        .eq("week_start", nextWeekStart)
-        .maybeSingle();
-
-      let reportId = existingReport?.id;
-
-      if (!reportId) {
-        const weekEnd = new Date(nextWeekStart);
-        weekEnd.setDate(weekEnd.getDate() + 6);
-        const { data: newReport } = await supabase
+      // NTE meetings also copy the task into the employee's weekly report so it
+      // appears on "This Week". Danfe meetings keep tasks only in meeting_tasks.
+      if (meeting!.company === "nte") {
+        const { data: existingReport } = await supabase
           .from("weekly_reports")
-          .insert({
-            employee_id: emp.id,
-            department_id: emp.department_id,
-            week_start: nextWeekStart,
-            week_end: weekEnd.toISOString().split("T")[0],
-            status: "draft",
-          })
           .select("id")
-          .maybeSingle();
-        reportId = newReport?.id;
-      }
-
-      if (reportId) {
-        const { data: maxOrder } = await supabase
-          .from("weekly_tasks")
-          .select("sort_order")
-          .eq("report_id", reportId)
-          .order("sort_order", { ascending: false })
-          .limit(1)
+          .eq("employee_id", emp.id)
+          .eq("week_start", nextWeekStart)
           .maybeSingle();
 
-        await supabase.from("weekly_tasks").insert({
-          report_id: reportId,
-          employee_id: emp.id,
-          task_type: "planned",
-          task_text: newTaskText.trim(),
-          source: "meeting",
-          sort_order: (maxOrder?.sort_order ?? -1) + 1,
-        });
+        let reportId = existingReport?.id;
+
+        if (!reportId) {
+          const weekEnd = new Date(nextWeekStart);
+          weekEnd.setDate(weekEnd.getDate() + 6);
+          const { data: newReport } = await supabase
+            .from("weekly_reports")
+            .insert({
+              employee_id: emp.id,
+              department_id: emp.department_id,
+              week_start: nextWeekStart,
+              week_end: weekEnd.toISOString().split("T")[0],
+              status: "draft",
+            })
+            .select("id")
+            .maybeSingle();
+          reportId = newReport?.id;
+        }
+
+        if (reportId) {
+          const { data: maxOrder } = await supabase
+            .from("weekly_tasks")
+            .select("sort_order")
+            .eq("report_id", reportId)
+            .order("sort_order", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          await supabase.from("weekly_tasks").insert({
+            report_id: reportId,
+            employee_id: emp.id,
+            task_type: "planned",
+            task_text: newTaskText.trim(),
+            source: "meeting",
+            company: meeting!.company,
+            sort_order: (maxOrder?.sort_order ?? -1) + 1,
+          });
+        }
       }
 
       setNewTaskText("");
@@ -214,7 +232,11 @@ export default function MeetingDetail() {
   };
 
   const deleteTask = async (taskId: string) => {
-    await supabase.from("meeting_tasks").delete().eq("id", taskId);
+    const { error } = await supabase.from("meeting_tasks").delete().eq("id", taskId);
+    if (error) {
+      toast.error("Failed to delete task: " + error.message);
+      return;
+    }
     fetchData();
   };
 
@@ -225,7 +247,7 @@ export default function MeetingDetail() {
       day: "numeric",
     });
 
-    let text = `Meeting Minutes - ${meeting!.title}\nDate: ${dateStr}\n\n`;
+    let text = `Meeting Minutes - ${meeting!.title}\nDate: ${dateStr}\nCompany: ${meeting!.company === "danfe" ? "Danfe Tea" : "NTE Loyalty"}\n\n`;
 
     // Meeting Agenda section
     if (meeting!.agenda_content) {
@@ -363,83 +385,88 @@ export default function MeetingDetail() {
       contentHtml += `</div>`;
     }
 
-    printMeetingMinutes(meeting.title, dateStr, contentHtml);
+    printMeetingMinutes(meeting.title, dateStr, contentHtml, meeting.company);
   };
 
   const publishMeeting = async () => {
     if (!id) return;
     setIsPublishing(true);
 
-    const allTasks = employeeGroups.flatMap((g) => g.tasks);
+    // Danfe meetings keep their tasks in meeting_tasks only; publishing must not
+    // touch the NTE weekly report system (and thus never hide NTE tasks).
+    if (meeting!.company === "nte") {
+      const allTasks = employeeGroups.flatMap((g) => g.tasks);
 
-    // Group tasks by employee and week
-    const tasksByEmployeeWeek = new Map<string, typeof allTasks>();
-    for (const task of allTasks) {
-      const key = `${task.employee_id}::${task.assigned_week_start}`;
-      if (!tasksByEmployeeWeek.has(key)) {
-        tasksByEmployeeWeek.set(key, []);
-      }
-      tasksByEmployeeWeek.get(key)!.push(task);
-    }
-
-    // Process each employee/week group
-    const insertPromises: any[] = [];
-    for (const [key, empTasks] of tasksByEmployeeWeek) {
-      const [empId, weekStart] = key.split("::");
-
-      // Find existing report
-      const { data: existingReport } = await supabase
-        .from("weekly_reports")
-        .select("id")
-        .eq("employee_id", empId)
-        .eq("week_start", weekStart)
-        .maybeSingle();
-
-      if (existingReport) {
-        await Promise.all([
-          supabase.from("weekly_tasks").delete().eq("report_id", existingReport.id).eq("source", "meeting"),
-          supabase.from("weekly_reports").update({ status: "draft", submitted_at: null }).eq("id", existingReport.id),
-        ]);
+      // Group tasks by employee and week
+      const tasksByEmployeeWeek = new Map<string, typeof allTasks>();
+      for (const task of allTasks) {
+        const key = `${task.employee_id}::${task.assigned_week_start}`;
+        if (!tasksByEmployeeWeek.has(key)) {
+          tasksByEmployeeWeek.set(key, []);
+        }
+        tasksByEmployeeWeek.get(key)!.push(task);
       }
 
-      let reportId = existingReport?.id;
+      // Process each employee/week group
+      const insertPromises: any[] = [];
+      for (const [key, empTasks] of tasksByEmployeeWeek) {
+        const [empId, weekStart] = key.split("::");
 
-      if (!reportId) {
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekEnd.getDate() + 6);
-        const { data: newReport } = await supabase
+        // Find existing report
+        const { data: existingReport } = await supabase
           .from("weekly_reports")
-          .insert({
-            employee_id: empId,
-            department_id: empTasks[0].department_id,
-            week_start: weekStart,
-            week_end: weekEnd.toISOString().split("T")[0],
-            status: "draft",
-          })
           .select("id")
+          .eq("employee_id", empId)
+          .eq("week_start", weekStart)
           .maybeSingle();
-        reportId = newReport?.id;
+
+        if (existingReport) {
+          await Promise.all([
+            supabase.from("weekly_tasks").delete().eq("report_id", existingReport.id).eq("source", "meeting"),
+            supabase.from("weekly_reports").update({ status: "draft", submitted_at: null }).eq("id", existingReport.id),
+          ]);
+        }
+
+        let reportId = existingReport?.id;
+
+        if (!reportId) {
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekEnd.getDate() + 6);
+          const { data: newReport } = await supabase
+            .from("weekly_reports")
+            .insert({
+              employee_id: empId,
+              department_id: empTasks[0].department_id,
+              week_start: weekStart,
+              week_end: weekEnd.toISOString().split("T")[0],
+              status: "draft",
+            })
+            .select("id")
+            .maybeSingle();
+          reportId = newReport?.id;
+        }
+
+        if (!reportId) continue;
+
+        // Batch insert all tasks for this employee/week in one query
+        insertPromises.push(
+          supabase.from("weekly_tasks").insert(
+            empTasks.map((task, i) => ({
+              report_id: reportId,
+              employee_id: task.employee_id,
+              task_type: "planned",
+              task_text: task.task_text,
+              source: "meeting",
+              company: meeting!.company,
+              sort_order: i,
+            }))
+          )
+        );
       }
 
-      if (!reportId) continue;
-
-      // Batch insert all tasks for this employee/week in one query
-      insertPromises.push(
-        supabase.from("weekly_tasks").insert(
-          empTasks.map((task, i) => ({
-            report_id: reportId,
-            employee_id: task.employee_id,
-            task_type: "planned",
-            task_text: task.task_text,
-            source: "meeting",
-            sort_order: i,
-          }))
-        )
-      );
+      // Execute all batch inserts in parallel
+      await Promise.all(insertPromises);
     }
-
-    // Execute all batch inserts in parallel
-    await Promise.all(insertPromises);
 
     const { error } = await supabase
       .from("meetings")
@@ -501,6 +528,7 @@ export default function MeetingDetail() {
       })}
       actions={
         <div className="flex items-center gap-2 flex-wrap">
+          <CompanyBadge company={meeting.company} />
           <StatusBadge status={meeting.status} />
           <Button variant="outline" size="sm" onClick={() => navigate("/admin/meetings")} className="gap-1.5">
             <ArrowLeft className="h-4 w-4" />

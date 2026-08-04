@@ -28,6 +28,7 @@ interface AgendaDepartment {
     employee_code: string;
     planned_tasks: string[];
     completed_tasks: string[];
+    danfe_tasks: { title: string; tasks: string[] }[];
     notes: string;
   }[];
 }
@@ -50,7 +51,7 @@ export default function AdminAgenda() {
     // Fetch all submitted reports for the selected week
     const { data: reports } = await supabase
       .from("weekly_reports")
-      .select("*, employees(full_name, employee_code), departments(name), weekly_tasks(*)")
+      .select("*, employees(full_name, employee_code, companies), departments(name), weekly_tasks(*)")
       .eq("week_start", week.weekStartStr)
       .eq("status", "submitted");
 
@@ -59,10 +60,44 @@ export default function AdminAgenda() {
       return;
     }
 
+    const nteReports = reports.filter((r: any) => r.employees?.companies?.includes("nte"));
+
+    if (nteReports.length === 0) {
+      toast.error("No submitted reports found for this week");
+      return;
+    }
+
+    // Load submitted Danfe meeting checklists for this week so they can appear in the agenda
+    const danfeByEmployee = new Map<string, { title: string; tasks: string[] }[]>();
+    const { data: danfeMeetings } = await supabase
+      .from("meetings")
+      .select("id, title")
+      .eq("company", "danfe")
+      .eq("week_start", week.weekStartStr);
+
+    if (danfeMeetings && danfeMeetings.length > 0) {
+      const { data: danfeTasks } = await supabase
+        .from("meeting_tasks")
+        .select("employee_id, meeting_id, task_text")
+        .in("meeting_id", danfeMeetings.map((m) => m.id))
+        .eq("status", "submitted");
+
+      for (const meeting of danfeMeetings) {
+        const tasks = (danfeTasks || []).filter((t: any) => t.meeting_id === meeting.id);
+        for (const t of tasks) {
+          const list = danfeByEmployee.get(t.employee_id) || [];
+          const entry = list.find((e) => e.title === meeting.title);
+          if (entry) entry.tasks.push(t.task_text);
+          else list.push({ title: meeting.title, tasks: [t.task_text] });
+          danfeByEmployee.set(t.employee_id, list);
+        }
+      }
+    }
+
     // Group by department
     const deptMap = new Map<string, AgendaDepartment>();
 
-    reports.forEach((report: any) => {
+    nteReports.forEach((report: any) => {
       const deptId = report.department_id;
       const deptName = report.departments?.name || "Unknown";
 
@@ -83,6 +118,7 @@ export default function AdminAgenda() {
         employee_code: report.employees?.employee_code || "",
         planned_tasks: planned,
         completed_tasks: completed,
+        danfe_tasks: danfeByEmployee.get(report.employee_id) || [],
         notes: report.notes || "",
       });
     });
@@ -93,7 +129,7 @@ export default function AdminAgenda() {
 
     setAgenda(agendaData);
     setGenerated(true);
-    toast.success(`Agenda generated from ${reports.length} reports`);
+    toast.success(`Agenda generated from ${nteReports.length} reports`);
   };
 
   const getAgendaText = () => {
@@ -120,6 +156,15 @@ export default function AdminAgenda() {
         if (emp.completed_tasks.length > 0) {
           text += `Work completed:\n`;
           emp.completed_tasks.forEach((t) => { text += `• ${t}\n`; });
+          text += `\n`;
+        }
+
+        if (emp.danfe_tasks.length > 0) {
+          text += `Danfe tasks:\n`;
+          emp.danfe_tasks.forEach((d) => {
+            text += `  ${d.title}:\n`;
+            d.tasks.forEach((t) => { text += `    • ${t}\n`; });
+          });
           text += `\n`;
         }
 
@@ -287,6 +332,22 @@ export default function AdminAgenda() {
                               <li key={i}>• {t}</li>
                             ))}
                           </ul>
+                        </div>
+                      )}
+
+                      {emp.danfe_tasks.length > 0 && (
+                        <div className="mb-2">
+                          <p className="text-xs font-medium text-muted-foreground mb-1">Danfe tasks:</p>
+                          {emp.danfe_tasks.map((d, di) => (
+                            <div key={di} className="mb-1.5 last:mb-0">
+                              <p className="text-xs font-semibold text-green-700 mb-0.5">{d.title}</p>
+                              <ul className="text-sm space-y-0.5">
+                                {d.tasks.map((t, i) => (
+                                  <li key={i}>• {t}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
                         </div>
                       )}
 

@@ -1,4 +1,6 @@
 import logoUrl from "@/img/nte trans logo black.png";
+import danfeLogoUrl from "@/img/danfe-tea-logo-7.jpeg";
+import type { Company } from "@/types/database";
 
 async function toDataUrl(url: string): Promise<string> {
   const res = await fetch(url);
@@ -11,10 +13,12 @@ async function toDataUrl(url: string): Promise<string> {
   });
 }
 
-export async function printMeetingMinutes(title: string, date: string, contentHtml: string) {
-  let logoSrc = logoUrl;
+export async function printMeetingMinutes(title: string, date: string, contentHtml: string, company: Company = "nte") {
+  const isDanfe = company === "danfe";
+  const logo = isDanfe ? danfeLogoUrl : logoUrl;
+  let logoSrc = logo;
   try {
-    logoSrc = await toDataUrl(logoUrl);
+    logoSrc = await toDataUrl(logo);
   } catch {
     // fall back to the asset URL if embedding fails
   }
@@ -43,7 +47,7 @@ export async function printMeetingMinutes(title: string, date: string, contentHt
 </style></head>
 <body>
   <div class="letterhead">
-    <img src="${logoSrc}" alt="Nepal Tea Exchange" />
+    <img src="${logoSrc}" alt="${isDanfe ? "Danfe Tea" : "Nepal Tea Exchange"}" />
   </div>
   <h1>${title}</h1>
   <div class="date">${date}</div>

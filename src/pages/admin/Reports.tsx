@@ -22,12 +22,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Eye, RotateCcw, ChevronLeft, ChevronRight, FileText, AlertCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { addWeeks, subWeeks } from "date-fns";
-import type { WeeklyReport, WeeklyTask, Employee, Department } from "@/types/database";
+import type { WeeklyReport, WeeklyTask, Employee, Department, MeetingTask } from "@/types/database";
 
 interface ReportWithEmployee extends WeeklyReport {
   employee?: Employee;
   departments?: { name: string };
   weekly_tasks?: WeeklyTask[];
+}
+
+interface DanfeTaskGroup {
+  meeting_title: string;
+  meeting_date: string;
+  tasks: MeetingTask[];
 }
 
 function initialsOf(name: string) {
@@ -47,6 +53,7 @@ export default function AdminReports() {
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
   const [selectedReport, setSelectedReport] = useState<ReportWithEmployee | null>(null);
   const [reportTasks, setReportTasks] = useState<WeeklyTask[]>([]);
+  const [danfeTaskGroups, setDanfeTaskGroups] = useState<DanfeTaskGroup[]>([]);
   const [reopeningReport, setReopeningReport] = useState<ReportWithEmployee | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ReportWithEmployee | null>(null);
 
@@ -63,7 +70,8 @@ export default function AdminReports() {
       .from("employees")
       .select("*")
       .eq("is_active", true)
-      .neq("role", "admin");
+      .neq("role", "admin")
+      .contains("companies", ["nte"]);
     if (emps) setAllEmployees(emps as Employee[]);
 
     let query = supabase
@@ -77,7 +85,7 @@ export default function AdminReports() {
     }
 
     const { data } = await query;
-    if (data) setReports(data as ReportWithEmployee[]);
+    if (data) setReports((data as ReportWithEmployee[]).filter((r) => (r as any).employees?.companies?.includes("nte")));
   }, [week.weekStartStr, selectedDept]);
 
   useEffect(() => {
@@ -92,7 +100,41 @@ export default function AdminReports() {
 
   const viewReport = async (report: ReportWithEmployee) => {
     setReportTasks(report.weekly_tasks || []);
+    setDanfeTaskGroups([]);
     setSelectedReport(report);
+
+    // Load the employee's Danfe meeting checklist tasks too
+    const { data: meetings } = await supabase
+      .from("meetings")
+      .select("id, title, meeting_date")
+      .eq("company", "danfe")
+      .contains("attendees", [report.employee_id])
+      .order("meeting_date", { ascending: false });
+
+    if (!meetings || meetings.length === 0) return;
+
+    const { data: tasks } = await supabase
+      .from("meeting_tasks")
+      .select("*")
+      .in("meeting_id", meetings.map((m) => m.id))
+      .eq("employee_id", report.employee_id)
+      .eq("status", "submitted")
+      .order("created_at");
+
+    const taskMap = new Map<string, MeetingTask[]>();
+    for (const task of tasks || []) {
+      const list = taskMap.get(task.meeting_id) || [];
+      list.push(task);
+      taskMap.set(task.meeting_id, list);
+    }
+
+    setDanfeTaskGroups(
+      meetings.map((m) => ({
+        meeting_title: m.title,
+        meeting_date: m.meeting_date,
+        tasks: taskMap.get(m.id) || [],
+      }))
+    );
   };
 
   const handleReopen = async () => {
@@ -299,6 +341,36 @@ export default function AdminReports() {
                   </ul>
                 )}
               </div>
+
+              {danfeTaskGroups.filter((g) => g.tasks.length > 0).length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2 tracking-wide uppercase">Danfe Task</p>
+                  <div className="space-y-3 bg-muted/40 rounded-xl p-3 border border-border/70">
+                    {danfeTaskGroups.filter((g) => g.tasks.length > 0).map((group) => (
+                      <div key={group.meeting_title + group.meeting_date}>
+                        <p className="text-xs font-medium mb-1.5">
+                          {group.meeting_title}
+                          <span className="text-muted-foreground font-normal ml-2">
+                            {new Date(group.meeting_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </span>
+                        </p>
+                        <ul className="space-y-1.5">
+                          {group.tasks.map((task) => (
+                            <li key={task.id} className="flex items-center gap-2 text-sm">
+                              <span className={task.is_checked ? "text-emerald-600" : "text-muted-foreground"}>
+                                {task.is_checked ? "✓" : "○"}
+                              </span>
+                              <span className={`flex-1 ${task.is_checked ? "line-through text-muted-foreground" : ""}`}>{task.task_text}</span>
+                              {task.source === "admin" && <Badge variant="secondary" className="text-xs">Admin</Badge>}
+                              <Badge variant="outline" className="text-xs text-green-600 bg-green-50 shrink-0">Danfe Tea</Badge>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {selectedReport.notes && (
                 <div>
