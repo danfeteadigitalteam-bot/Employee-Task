@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { InstallBanner } from "@/components/layout/InstallBanner";
 import { Toaster } from "@/components/ui/sonner";
 import { lazy, Suspense } from "react";
 import type { ReactNode } from "react";
@@ -81,6 +82,7 @@ function WorkspaceLayout() {
         <MobileNav />
         <Outlet />
       </div>
+      <InstallBanner />
     </div>
   );
 }
