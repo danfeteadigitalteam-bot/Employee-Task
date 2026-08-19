@@ -30,19 +30,11 @@ import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { NewWeekButton } from "@/components/shared/NewWeekButton";
 import { CompanyBadge } from "@/components/shared/CompanyBadge";
 import { toast } from "sonner";
+import { initialsOf } from "@/lib/utils";
 import type { Employee, Department, Company } from "@/types/database";
 
 interface EmployeeWithDept extends Employee {
   departments?: { name: string };
-}
-
-function initialsOf(name: string) {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
 }
 
 export default function AdminEmployees() {

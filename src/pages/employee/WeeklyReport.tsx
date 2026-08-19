@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useActiveWeek } from "@/hooks/useActiveWeek";
+import { useDanfeTasks } from "@/hooks/useDanfeTasks";
 import { formatWeekRange } from "@/hooks/useWeek";
 import { supabase } from "@/lib/supabase";
 import { PageLayout } from "@/components/layout/PageLayout";
@@ -15,7 +16,7 @@ import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { NewWeekButton } from "@/components/shared/NewWeekButton";
 import { Plus, Pencil, Trash2, Check, X, Send, RotateCcw, ListTodo, CheckCircle2, NotebookPen, Link2, Lock, Coffee } from "lucide-react";
 import { toast } from "sonner";
-import type { WeeklyTask, Meeting, MeetingTask } from "@/types/database";
+import type { WeeklyTask } from "@/types/database";
 
 export default function WeeklyReportPage() {
   const { employee } = useAuth();
@@ -26,7 +27,7 @@ export default function WeeklyReportPage() {
   const [notesLoaded, setNotesLoaded] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [danfeMeetings, setDanfeMeetings] = useState<{ meeting: Meeting; tasks: MeetingTask[] }[]>([]);
+  const { danfeMeetings, toggleTask: toggleDanfeTask } = useDanfeTasks(employee);
 
   // Inline editing state
   const [newTaskText, setNewTaskText] = useState("");
@@ -51,47 +52,6 @@ export default function WeeklyReportPage() {
     setCompletedTasks(activeTasks.filter((t) => t.task_type === "completed"));
   }, [activeReport, activeTasks]);
 
-  // Fetch the employee's Danfe meeting checklists (shown separately from the NTE week)
-  useEffect(() => {
-    if (!employee) return;
-    const fetchDanfe = async () => {
-      const { data: meetings } = await supabase
-        .from("meetings")
-        .select("*")
-        .eq("company", "danfe")
-        .contains("attendees", [employee.id])
-        .order("meeting_date", { ascending: false });
-
-      if (!meetings || meetings.length === 0) {
-        setDanfeMeetings([]);
-        return;
-      }
-
-      const { data: meetingTasks } = await supabase
-        .from("meeting_tasks")
-        .select("*")
-        .in("meeting_id", meetings.map((m) => m.id))
-        .eq("employee_id", employee.id)
-        .eq("status", "submitted")
-        .order("created_at");
-
-      const taskMap = new Map<string, MeetingTask[]>();
-      for (const task of meetingTasks || []) {
-        const list = taskMap.get(task.meeting_id) || [];
-        list.push(task);
-        taskMap.set(task.meeting_id, list);
-      }
-
-      setDanfeMeetings(
-        (meetings as Meeting[]).map((meeting) => ({
-          meeting,
-          tasks: taskMap.get(meeting.id) || [],
-        }))
-      );
-    };
-    fetchDanfe();
-  }, [employee]);
-
   const saveNotes = useCallback(async () => {
     if (!report || isReadOnly || !notesLoaded) return;
     await supabase.from("weekly_reports").update({ notes }).eq("id", report.id);
@@ -101,18 +61,6 @@ export default function WeeklyReportPage() {
     const timer = setTimeout(saveNotes, 1000);
     return () => clearTimeout(timer);
   }, [saveNotes]);
-
-  // Toggle a Danfe meeting task's completion (stored on meeting_tasks)
-  const toggleDanfeTask = async (task: MeetingTask) => {
-    const newChecked = !task.is_checked;
-    await supabase.from("meeting_tasks").update({ is_checked: newChecked }).eq("id", task.id);
-    setDanfeMeetings((prev) =>
-      prev.map(({ meeting, tasks }) => ({
-        meeting,
-        tasks: tasks.map((t) => (t.id === task.id ? { ...t, is_checked: newChecked } : t)),
-      }))
-    );
-  };
 
   // Add planned task
   const addTask = async () => {

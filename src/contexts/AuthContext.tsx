@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
 import type { Employee } from "@/types/database";
 import { EDGE_FUNCTION_BASE } from "@/lib/supabase";
 
@@ -36,7 +36,6 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Restore the cached session synchronously so the app renders immediately
   const [employee, setEmployee] = useState<Employee | null>(readCachedEmployee);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -74,8 +73,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         REQUEST_TIMEOUT_MS
       );
 
-      // Only log the user out when the server explicitly rejects the session.
-      // Network errors / timeouts / 5xx keep the cached session so the app stays usable.
       if (!response.ok) {
         if (response.status === 401 || response.status === 403 || response.status === 404) {
           clearSession();
@@ -101,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshEmployee();
   }, [refreshEmployee]);
 
-  const login = async (employeeCode: string, pin: string) => {
+  const login = useCallback(async (employeeCode: string, pin: string) => {
     try {
       const response = await fetchWithTimeout(
         `${EDGE_FUNCTION_BASE}/login`,
@@ -132,14 +129,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       return { success: false, error: "Connection error. Please try again." };
     }
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     clearSession();
-  };
+  }, [clearSession]);
+
+  const value = useMemo(
+    () => ({ employee, isLoading, login, logout, refreshEmployee }),
+    [employee, isLoading, login, logout, refreshEmployee]
+  );
 
   return (
-    <AuthContext.Provider value={{ employee, isLoading, login, logout, refreshEmployee }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

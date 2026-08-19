@@ -1,5 +1,5 @@
 //C:\Users\ACER\Desktop\NTE Loyalty\Employee Workspace\src\pages\admin\Departments.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,14 +26,14 @@ export default function AdminDepartments() {
   const [formName, setFormName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchDepartments = async () => {
+  const fetchDepartments = useCallback(async () => {
     const { data } = await supabase.from("departments").select("*").order("name");
     if (data) setDepartments(data as Department[]);
-  };
+  }, []);
 
   useEffect(() => {
     fetchDepartments();
-  }, []);
+  }, [fetchDepartments]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();

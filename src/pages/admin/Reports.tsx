@@ -1,5 +1,5 @@
 //C:\Users\ACER\Desktop\NTE Loyalty\Employee Workspace\src\pages\admin\Reports.tsx
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { deleteReport } from "@/lib/weekService";
@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { Linkify } from "@/components/shared/Linkify";
+import { initialsOf } from "@/lib/utils";
 import { NewWeekButton } from "@/components/shared/NewWeekButton";
 import {
   Select,
@@ -36,15 +38,6 @@ interface DanfeTaskGroup {
   tasks: MeetingTask[];
 }
 
-function initialsOf(name: string) {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-}
-
 export default function AdminReports() {
   const [searchParams] = useSearchParams();
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -57,9 +50,11 @@ export default function AdminReports() {
   const [reopeningReport, setReopeningReport] = useState<ReportWithEmployee | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ReportWithEmployee | null>(null);
 
-  const now = new Date();
   const [weekOffset, setWeekOffset] = useState(0);
-  const referenceDate = weekOffset === 0 ? now : (weekOffset > 0 ? addWeeks(now, weekOffset) : subWeeks(now, Math.abs(weekOffset)));
+  const referenceDate = useMemo(() => {
+    const now = new Date();
+    return weekOffset === 0 ? now : (weekOffset > 0 ? addWeeks(now, weekOffset) : subWeeks(now, Math.abs(weekOffset)));
+  }, [weekOffset]);
   const week = useWeek(referenceDate);
 
   const fetchData = useCallback(async () => {
@@ -93,10 +88,13 @@ export default function AdminReports() {
   }, [fetchData]);
 
   // Find employees who haven't submitted
-  const submittedIds = new Set(reports.map((r) => r.employee_id));
-  const missingEmployees = allEmployees
-    .filter((emp) => !submittedIds.has(emp.id))
-    .filter((emp) => selectedDept === "all" || emp.department_id === selectedDept);
+  const submittedIds = useMemo(() => new Set(reports.map((r) => r.employee_id)), [reports]);
+  const missingEmployees = useMemo(
+    () => allEmployees
+      .filter((emp) => !submittedIds.has(emp.id))
+      .filter((emp) => selectedDept === "all" || emp.department_id === selectedDept),
+    [allEmployees, submittedIds, selectedDept]
+  );
 
   const viewReport = async (report: ReportWithEmployee) => {
     setReportTasks(report.weekly_tasks || []);
@@ -375,7 +373,7 @@ export default function AdminReports() {
               {selectedReport.notes && (
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-2 tracking-wide uppercase">Notes</p>
-                  <p className="text-sm whitespace-pre-wrap bg-muted/40 rounded-xl p-3 border border-border/70">{selectedReport.notes}</p>
+                  <div className="text-sm whitespace-pre-wrap bg-muted/40 rounded-xl p-3 border border-border/70"><Linkify>{selectedReport.notes}</Linkify></div>
                 </div>
               )}
             </div>

@@ -13,6 +13,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { Linkify } from "@/components/shared/Linkify";
+import { initialsOf } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -31,15 +33,6 @@ interface EmployeeTasks {
   employee: Employee;
   tasks: MeetingTask[];
   submitted: boolean;
-}
-
-function initialsOf(name: string) {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
 }
 
 export default function MeetingDetail() {
@@ -496,7 +489,7 @@ export default function MeetingDetail() {
     setShowDeleteConfirm(false);
     if (!error) {
       toast.success("Meeting deleted");
-      navigate("/admin/meetings");
+      navigate("/workspace/admin/meetings");
     } else {
       toast.error("Failed to delete meeting");
     }
@@ -530,7 +523,7 @@ export default function MeetingDetail() {
         <div className="flex items-center gap-2 flex-wrap">
           <CompanyBadge company={meeting.company} />
           <StatusBadge status={meeting.status} />
-          <Button variant="outline" size="sm" onClick={() => navigate("/admin/meetings")} className="gap-1.5">
+          <Button variant="outline" size="sm" onClick={() => navigate("/workspace/admin/meetings")} className="gap-1.5">
             <ArrowLeft className="h-4 w-4" />
             Back
           </Button>
@@ -593,7 +586,7 @@ export default function MeetingDetail() {
             </CardHeader>
             <CardContent>
               <div className="text-sm whitespace-pre-wrap bg-muted/50 p-4 rounded-xl border border-border/70">
-                {meeting.agenda_content}
+                <Linkify>{meeting.agenda_content}</Linkify>
               </div>
             </CardContent>
           </Card>
@@ -701,13 +694,13 @@ export default function MeetingDetail() {
                     {note.discussion && note.discussion.trim() && (
                       <div>
                         <p className="text-xs font-medium text-muted-foreground mb-1">Discussion</p>
-                        <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2.5 rounded-lg">{note.discussion}</p>
+                        <div className="text-sm whitespace-pre-wrap bg-muted/50 p-2.5 rounded-lg"><Linkify>{note.discussion}</Linkify></div>
                       </div>
                     )}
                     {note.decisions && note.decisions.trim() && (
                       <div>
                         <p className="text-xs font-medium text-muted-foreground mb-1">Decisions</p>
-                        <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2.5 rounded-lg">{note.decisions}</p>
+                        <div className="text-sm whitespace-pre-wrap bg-muted/50 p-2.5 rounded-lg"><Linkify>{note.decisions}</Linkify></div>
                       </div>
                     )}
                   </div>

@@ -42,5 +42,7 @@ export function useActiveWeek(employee: Employee | null) {
     refresh();
   }, [refresh, reload]);
 
-  return { report, tasks, loading, error, refresh, retry: () => setReload((r) => r + 1) };
+  const retry = useCallback(() => setReload((r) => r + 1), []);
+
+  return { report, tasks, loading, error, refresh, retry };
 }

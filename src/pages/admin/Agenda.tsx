@@ -1,5 +1,5 @@
 //C:\Users\ACER\Desktop\NTE Loyalty\Employee Workspace\src\pages\admin\Agenda.tsx
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { useWeek } from "@/hooks/useWeek";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
+import { Linkify } from "@/components/shared/Linkify";
 import { Calendar, Copy, Save, FileText, ChevronLeft, ChevronRight, Users2, Sparkles } from "lucide-react";
 import {
   Dialog,
@@ -35,9 +36,11 @@ interface AgendaDepartment {
 
 export default function AdminAgenda() {
   const { employee: admin } = useAuth();
-  const now = new Date();
   const [weekOffset, setWeekOffset] = useState(0);
-  const referenceDate = weekOffset === 0 ? now : (weekOffset > 0 ? addWeeks(now, weekOffset) : subWeeks(now, Math.abs(weekOffset)));
+  const referenceDate = useMemo(() => {
+    const now = new Date();
+    return weekOffset === 0 ? now : (weekOffset > 0 ? addWeeks(now, weekOffset) : subWeeks(now, Math.abs(weekOffset)));
+  }, [weekOffset]);
   const week = useWeek(referenceDate);
 
   const [agenda, setAgenda] = useState<AgendaDepartment[]>([]);
@@ -354,7 +357,7 @@ export default function AdminAgenda() {
                       {emp.notes && (
                         <div>
                           <p className="text-xs font-medium text-muted-foreground mb-1">Notes:</p>
-                          <p className="text-sm whitespace-pre-wrap bg-muted/50 p-2.5 rounded-lg border border-border/70">{emp.notes}</p>
+                          <div className="text-sm whitespace-pre-wrap bg-muted/50 p-2.5 rounded-lg border border-border/70"><Linkify>{emp.notes}</Linkify></div>
                         </div>
                       )}
 

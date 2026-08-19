@@ -142,7 +142,7 @@ export default function AdminDanfeMeetings() {
       toast.success(`Meeting started with ${names.join(", ")}. They can now add their checklists.`);
       setShowNewDialog(false);
       setSelectedEmployeeIds([]);
-      navigate(`/admin/meetings/${data.id}`);
+      navigate(`/workspace/admin/meetings/${data.id}`);
     } else {
       toast.error("Failed to create meeting");
     }
@@ -195,7 +195,7 @@ export default function AdminDanfeMeetings() {
             <Card
               key={meeting.id}
               className="cursor-pointer card-interactive"
-              onClick={() => navigate(`/admin/meetings/${meeting.id}`)}
+              onClick={() => navigate(`/workspace/admin/meetings/${meeting.id}`)}
             >
               <CardContent className="p-4">
                 <div className="flex items-center justify-between gap-3">

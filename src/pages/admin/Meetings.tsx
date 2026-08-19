@@ -108,7 +108,7 @@ export default function AdminMeetings() {
     if (data && !error) {
       toast.success("Meeting created. Employees can now write their contributions.");
       setShowNewDialog(false);
-      navigate(`/admin/meetings/${data.id}`);
+      navigate(`/workspace/admin/meetings/${data.id}`);
     }
   };
 
@@ -159,7 +159,7 @@ export default function AdminMeetings() {
             <Card
               key={meeting.id}
               className="cursor-pointer card-interactive"
-              onClick={() => navigate(`/admin/meetings/${meeting.id}`)}
+              onClick={() => navigate(`/workspace/admin/meetings/${meeting.id}`)}
             >
               <CardContent className="p-4">
                 <div className="flex items-center justify-between gap-3">

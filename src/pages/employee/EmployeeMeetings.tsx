@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { printMeetingMinutes } from "@/lib/printMeeting";
 import { CompanyBadge } from "@/components/shared/CompanyBadge";
+import { Linkify } from "@/components/shared/Linkify";
 import type { Meeting, MeetingTask } from "@/types/database";
 
 export default function EmployeeMeetings() {
@@ -416,7 +417,7 @@ export default function EmployeeMeetings() {
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-2 tracking-wide uppercase">Meeting Agenda</p>
                 <div className="text-sm whitespace-pre-wrap bg-muted/50 p-4 rounded-xl border border-border/70">
-                  {selectedMeeting.agenda_content}
+                  <Linkify>{selectedMeeting.agenda_content}</Linkify>
                 </div>
               </div>
             )}
@@ -427,7 +428,7 @@ export default function EmployeeMeetings() {
                 <p className="text-xs font-medium text-muted-foreground mb-2 tracking-wide uppercase">Meeting Minutes</p>
                 {selectedMeeting.overall_minutes ? (
                   <div className="text-sm whitespace-pre-wrap bg-muted/50 p-4 rounded-xl border border-border/70">
-                    {selectedMeeting.overall_minutes}
+                    <Linkify>{selectedMeeting.overall_minutes}</Linkify>
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">No minutes recorded.</p>

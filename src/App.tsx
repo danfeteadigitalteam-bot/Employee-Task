@@ -1,12 +1,18 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { MobileNav } from "@/components/layout/MobileNav";
 import { Toaster } from "@/components/ui/sonner";
 import { lazy, Suspense } from "react";
 import type { ReactNode } from "react";
 
 // Lazy load page components for code splitting
 const LoginPage = lazy(() => import("@/pages/LoginPage"));
+const HomePage = lazy(() => import("@/pages/HomePage"));
+const AppFrame = lazy(() =>
+  import("@/components/workspace/AppFrame").then((m) => ({ default: m.AppFrame }))
+);
 const EmployeeDashboard = lazy(() => import("@/pages/employee/Dashboard"));
 const WeeklyReportPage = lazy(() => import("@/pages/employee/WeeklyReport"));
 const PreviousReports = lazy(() => import("@/pages/employee/PreviousReports"));
@@ -31,7 +37,7 @@ function PageLoader() {
 
 const queryClient = new QueryClient();
 
-function ProtectedRoute({ children, allowedRole }: { children: ReactNode; allowedRole?: string }) {
+function ProtectedRoute({ children }: { children: ReactNode }) {
   const { employee, isLoading } = useAuth();
 
   if (isLoading && !employee) {
@@ -44,11 +50,6 @@ function ProtectedRoute({ children, allowedRole }: { children: ReactNode; allowe
 
   if (!employee) {
     return <Navigate to="/login" replace />;
-  }
-
-  if (allowedRole && employee.role !== allowedRole) {
-    const redirectPath = employee.role === "admin" ? "/admin/dashboard" : "/employee/dashboard";
-    return <Navigate to={redirectPath} replace />;
   }
 
   return <>{children}</>;
@@ -66,40 +67,86 @@ function PublicRoute({ children }: { children: ReactNode }) {
   }
 
   if (employee) {
-    const redirectPath = employee.role === "admin" ? "/admin/dashboard" : "/employee/dashboard";
-    return <Navigate to={redirectPath} replace />;
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
 }
 
+function WorkspaceLayout() {
+  return (
+    <div className="flex min-h-screen bg-muted/30">
+      <Sidebar />
+      <div className="flex-1 flex flex-col min-w-0">
+        <MobileNav />
+        <Outlet />
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceShell() {
+  return (
+    <div className="flex min-h-screen bg-muted/30">
+      <Sidebar />
+      <div className="flex-1 flex flex-col min-w-0">
+        <Outlet />
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceRedirect() {
+  const { employee } = useAuth();
+  if (employee?.role === "admin") {
+    return <Navigate to="/workspace/admin/dashboard" replace />;
+  }
+  return <Navigate to="/workspace/dashboard" replace />;
+}
+
 function AppRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
-    <Routes>
-      {/* Public */}
-      <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+      <Routes>
+        {/* Public */}
+        <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
 
-      {/* Employee routes */}
-      <Route path="/employee/dashboard" element={<ProtectedRoute><EmployeeDashboard /></ProtectedRoute>} />
-      <Route path="/employee/report" element={<ProtectedRoute><WeeklyReportPage /></ProtectedRoute>} />
-      <Route path="/employee/reports" element={<ProtectedRoute><PreviousReports /></ProtectedRoute>} />
-      <Route path="/employee/meetings" element={<ProtectedRoute><EmployeeMeetings /></ProtectedRoute>} />
-      <Route path="/employee/profile" element={<ProtectedRoute><EmployeeProfile /></ProtectedRoute>} />
+        {/* Authenticated workspace layout (with sidebar + mobile nav) */}
+        <Route element={<ProtectedRoute><WorkspaceLayout /></ProtectedRoute>}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/workspace" element={<WorkspaceRedirect />} />
 
-      {/* Admin routes */}
-      <Route path="/admin/dashboard" element={<ProtectedRoute allowedRole="admin"><AdminDashboard /></ProtectedRoute>} />
-      <Route path="/admin/employees" element={<ProtectedRoute allowedRole="admin"><AdminEmployees /></ProtectedRoute>} />
-      <Route path="/admin/departments" element={<ProtectedRoute allowedRole="admin"><AdminDepartments /></ProtectedRoute>} />
-      <Route path="/admin/reports" element={<ProtectedRoute allowedRole="admin"><AdminReports /></ProtectedRoute>} />
-      <Route path="/admin/agenda" element={<ProtectedRoute allowedRole="admin"><AdminAgenda /></ProtectedRoute>} />
-      <Route path="/admin/meetings" element={<ProtectedRoute allowedRole="admin"><AdminMeetings /></ProtectedRoute>} />
-      <Route path="/admin/meetings/:id" element={<ProtectedRoute allowedRole="admin"><MeetingDetail /></ProtectedRoute>} />
-      <Route path="/admin/danfe" element={<ProtectedRoute allowedRole="admin"><AdminDanfeMeetings /></ProtectedRoute>} />
+          {/* Employee routes */}
+          <Route path="/workspace/dashboard" element={<EmployeeDashboard />} />
+          <Route path="/workspace/report" element={<WeeklyReportPage />} />
+          <Route path="/workspace/reports" element={<PreviousReports />} />
+          <Route path="/workspace/meetings" element={<EmployeeMeetings />} />
+          <Route path="/workspace/profile" element={<EmployeeProfile />} />
 
-      {/* Default redirect */}
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+          {/* Admin routes */}
+          <Route path="/workspace/admin/dashboard" element={<AdminDashboard />} />
+          <Route path="/workspace/admin/employees" element={<AdminEmployees />} />
+          <Route path="/workspace/admin/departments" element={<AdminDepartments />} />
+          <Route path="/workspace/admin/reports" element={<AdminReports />} />
+          <Route path="/workspace/admin/agenda" element={<AdminAgenda />} />
+          <Route path="/workspace/admin/meetings" element={<AdminMeetings />} />
+          <Route path="/workspace/admin/meetings/:id" element={<MeetingDetail />} />
+          <Route path="/workspace/admin/danfe" element={<AdminDanfeMeetings />} />
+        </Route>
+
+        {/* Embedded apps (with sidebar only, no mobile nav - AppFrame has its own toolbar) */}
+        <Route element={<ProtectedRoute><WorkspaceShell /></ProtectedRoute>}>
+          <Route path="/apps/tasks" element={<AppFrame src="https://danfexnte.vercel.app/" title="Task Automation" />} />
+          <Route path="/apps/clock-in" element={<AppFrame src="https://nte-clockin.web.app/" title="Clock In" />} />
+        </Route>
+
+        {/* Legacy redirects - keep old URLs working */}
+        <Route path="/employee/*" element={<Navigate to="/workspace" replace />} />
+        <Route path="/admin/*" element={<Navigate to="/workspace" replace />} />
+
+        {/* Default redirect */}
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
     </Suspense>
   );
 }

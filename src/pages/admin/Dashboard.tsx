@@ -192,7 +192,7 @@ export default function AdminDashboard() {
                     <div
                       key={dept.department_id}
                       className="flex items-center justify-between p-3.5 rounded-xl border border-border card-interactive cursor-pointer"
-                      onClick={() => navigate(`/admin/reports?department=${dept.department_id}`)}
+                      onClick={() => navigate(`/workspace/admin/reports?department=${dept.department_id}`)}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="p-2 bg-muted rounded-lg shrink-0">

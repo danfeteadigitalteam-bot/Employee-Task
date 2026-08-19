@@ -1,8 +1,9 @@
 //C:\Users\ACER\Desktop\NTE Loyalty\Employee Workspace\src\pages\employee\Dashboard.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatWeekRange } from "@/hooks/useWeek";
 import { useActiveWeek } from "@/hooks/useActiveWeek";
+import { useDanfeTasks } from "@/hooks/useDanfeTasks";
 import { supabase } from "@/lib/supabase";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { NewWeekButton } from "@/components/shared/NewWeekButton";
 import { Building2, Calendar, ListChecks, FileText, ChevronRight, ClipboardList, Link2, CheckCircle2, ListTodo, RotateCcw, Coffee } from "lucide-react";
-import type { WeeklyTask, Meeting, MeetingTask } from "@/types/database";
+import type { WeeklyTask } from "@/types/database";
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -24,48 +25,10 @@ export default function EmployeeDashboard() {
   const { employee } = useAuth();
   const { report, tasks, loading, error, refresh, retry } = useActiveWeek(employee);
   const [recentReports, setRecentReports] = useState<{ week_start: string; week_end: string; status: string }[]>([]);
-  const [danfeMeetings, setDanfeMeetings] = useState<{ meeting: Meeting; tasks: MeetingTask[] }[]>([]);
+  const { danfeMeetings, toggleTask: toggleDanfeTask } = useDanfeTasks(employee);
 
   useEffect(() => {
     if (!employee) return;
-
-    const fetchDanfe = async () => {
-      const { data: meetings } = await supabase
-        .from("meetings")
-        .select("*")
-        .eq("company", "danfe")
-        .contains("attendees", [employee.id])
-        .order("meeting_date", { ascending: false });
-
-      if (!meetings || meetings.length === 0) {
-        setDanfeMeetings([]);
-        return;
-      }
-
-      const { data: meetingTasks } = await supabase
-        .from("meeting_tasks")
-        .select("*")
-        .in("meeting_id", meetings.map((m) => m.id))
-        .eq("employee_id", employee.id)
-        .eq("status", "submitted")
-        .order("created_at");
-
-      const taskMap = new Map<string, MeetingTask[]>();
-      for (const task of meetingTasks || []) {
-        const list = taskMap.get(task.meeting_id) || [];
-        list.push(task);
-        taskMap.set(task.meeting_id, list);
-      }
-
-      setDanfeMeetings(
-        (meetings as Meeting[]).map((meeting) => ({
-          meeting,
-          tasks: taskMap.get(meeting.id) || [],
-        }))
-      );
-    };
-
-    fetchDanfe();
 
     const fetchRecent = async () => {
       const { data: recentData } = await supabase
@@ -84,8 +47,8 @@ export default function EmployeeDashboard() {
   }, [employee]);
 
   const firstName = employee?.full_name?.split(" ")[0] || "";
-  const plannedTasks = tasks.filter((t) => t.task_type === "planned");
-  const completedTasks = tasks.filter((t) => t.task_type === "completed");
+  const plannedTasks = useMemo(() => tasks.filter((t) => t.task_type === "planned"), [tasks]);
+  const completedTasks = useMemo(() => tasks.filter((t) => t.task_type === "completed"), [tasks]);
   const completionPct =
     report && tasks.length > 0 ? Math.round((completedTasks.length / tasks.length) * 100) : 0;
   const activeRange = report ? formatWeekRange(report.week_start, report.week_end) : "No active week yet";
@@ -108,17 +71,6 @@ export default function EmployeeDashboard() {
       )}
     </div>
   );
-
-  const toggleDanfeTask = async (task: MeetingTask) => {
-    const newChecked = !task.is_checked;
-    await supabase.from("meeting_tasks").update({ is_checked: newChecked }).eq("id", task.id);
-    setDanfeMeetings((prev) =>
-      prev.map(({ meeting, tasks }) => ({
-        meeting,
-        tasks: tasks.map((t) => (t.id === task.id ? { ...t, is_checked: newChecked } : t)),
-      }))
-    );
-  };
 
   return (
     <PageLayout

@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { Linkify } from "@/components/shared/Linkify";
 import { Eye, Calendar, FileText, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -172,9 +173,9 @@ export default function PreviousReports() {
               {selectedReport.notes && (
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-2 tracking-wide uppercase">Notes</p>
-                  <p className="text-sm whitespace-pre-wrap bg-muted/40 rounded-xl p-3 border border-border/70">
-                    {selectedReport.notes}
-                  </p>
+                  <div className="text-sm whitespace-pre-wrap bg-muted/40 rounded-xl p-3 border border-border/70">
+                    <Linkify>{selectedReport.notes}</Linkify>
+                  </div>
                 </div>
               )}
             </div>

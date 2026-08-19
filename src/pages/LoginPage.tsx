@@ -33,7 +33,7 @@ export default function LoginPage() {
     setIsLoading(false);
 
     if (result.success) {
-      navigate("/employee/dashboard");
+      navigate("/");
     } else {
       setError(result.error || "Login failed");
     }
@@ -43,8 +43,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle className="text-xl">Employee Workspace</CardTitle>
-          <CardDescription>Sign in with your employee ID and PIN</CardDescription>
+          <CardTitle className="text-xl">DANFE × NTE</CardTitle>
+          <CardDescription>Sign in to the Employee Workspace</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
