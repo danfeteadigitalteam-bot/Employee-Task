@@ -47,6 +47,13 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Refresh session expiry (sliding window) - extends by 30 days on each valid visit
+    const newExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    await supabase
+      .from("user_sessions")
+      .update({ expires_at: newExpiresAt })
+      .eq("id", session.id);
+
     // Get employee data
     const { data: employee, error: empError } = await supabase
       .from("employees")
